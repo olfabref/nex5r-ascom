@@ -7,7 +7,8 @@ Contrôler un Sony NEX-5R depuis N.I.N.A. pour l'astrophoto : déclencher des po
 ## Matériel et environnement
 
 - Appareil : Sony NEX-5R (APS-C 16,1 MP, 2012), compatible PlayMemories Camera Apps (PMCA), Wi-Fi intégré.
-- Objectif : E-mount à mise au point électronique (modèle à préciser).
+- Objectif : Sigma 30mm DC DN (E-mount, mise au point électronique). `pmca-console info` le rapporte comme « Model 0xa0c530 », firmware 3.01.
+- Boîtier : firmware 1.03.
 - Poste de dev : Mac (Intel ou Apple Silicon, à préciser).
 - **Attention : N.I.N.A. ne tourne que sous Windows.** Il faudra un PC Windows, une VM ou un mini-PC pour NINA. Le serveur Alpaca, lui, peut tourner n'importe où sur le réseau (Mac, Raspberry Pi, PC).
 - Alimentation : le NEX-5R ne s'alimente pas par USB. Prévoir l'adaptateur secteur AC-PW20 (ou fausse batterie) pour une nuit complète.
@@ -70,11 +71,13 @@ Focuser mécanique : moteur pas à pas + courroie sur la bague de mise au point,
 
 ## Questions ouvertes
 
-- Le NEX-5R accepte-t-il `startOneShotFocusDrive` ? Quelle vitesse minimale, et combien de « pas » pour toute la course ?
+- ~~Le NEX-5R accepte-t-il `startOneShotFocusDrive` ?~~ **Non (2026-11-02)** : la fonction est absente de `/system/framework/sony.cameraex.odex` du NEX-5R (firmware 1.03), d'où le plantage de FocusBracket au lancement. En revanche, `CameraEx.shiftFocusPosition(int pas)` (déplacement relatif, renvoie un booléen) existe ; l'app Sony Bracket Pro, installée sur l'appareil, l'utilise pour son bracketing de mise au point.
+- Le bracketing de mise au point de Bracket Pro **fonctionne** avec le Sigma 30mm DC DN (2026-11-02) : `shiftFocusPosition` pilote bien cet objectif, au moins pendant une rafale.
+- `shiftFocusPosition` fonctionne-t-il hors d'une rafale (appareil au repos, en MF) ? Combien de pas pour toute la course ? Le déplacement est-il reproductible (aller-retour au même point) ?
 - Les poses longues (Bulb) sont-elles accessibles depuis une app embarquée ?
 - L'app peut-elle lire les fichiers ARW de la carte SD pendant que l'appareil tourne ?
 - Le Wi-Fi reste-t-il stable pendant une nuit entière avec une app custom ?
-- Mac Intel ou Apple Silicon ? Quel objectif exact ?
+- ~~Mac Intel ou Apple Silicon ? Quel objectif exact ?~~ Apple Silicon ; Sigma 30mm DC DN.
 
 ## Liens
 

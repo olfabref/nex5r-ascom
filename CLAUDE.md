@@ -2,6 +2,8 @@
 
 Piloter un Sony NEX-5R depuis N.I.N.A. via ASCOM Alpaca. Voir `brief.md`.
 
+- `camera-app/` : l'app Android embarquée (API 10, sans Gradle). Build, installation et debug : `camera-app/README.md`.
+
 ## Agent skills
 
 ### Issue tracker
