@@ -19,7 +19,31 @@ public final class Logger {
 
     public static void info(String msg) { log("INFO", msg); }
 
-    public static void error(String msg, Throwable t) { log("ERROR", msg + ": " + t); }
+    public static void error(String msg, Throwable t) { log("ERROR", msg + ": " + stackTrace(t)); }
+
+    /** Logs uncaught exceptions with their stack trace before the app dies (logcat is wiped on restart). */
+    public static void installCrashHandler() {
+        final Thread.UncaughtExceptionHandler previous = Thread.getDefaultUncaughtExceptionHandler();
+        if (previous instanceof CrashHandler) return;
+        Thread.setDefaultUncaughtExceptionHandler(new CrashHandler(previous));
+    }
+
+    private static final class CrashHandler implements Thread.UncaughtExceptionHandler {
+        private final Thread.UncaughtExceptionHandler previous;
+
+        CrashHandler(Thread.UncaughtExceptionHandler previous) { this.previous = previous; }
+
+        public void uncaughtException(Thread thread, Throwable t) {
+            log("CRASH", "thread " + thread.getName() + ": " + stackTrace(t));
+            if (previous != null) previous.uncaughtException(thread, t);
+        }
+    }
+
+    private static String stackTrace(Throwable t) {
+        java.io.StringWriter out = new java.io.StringWriter();
+        t.printStackTrace(new java.io.PrintWriter(out));
+        return out.toString();
+    }
 
     private static synchronized void log(String level, String msg) {
         try {

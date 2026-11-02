@@ -73,7 +73,18 @@ Focuser mécanique : moteur pas à pas + courroie sur la bague de mise au point,
 
 - ~~Le NEX-5R accepte-t-il `startOneShotFocusDrive` ?~~ **Non (2026-11-02)** : la fonction est absente de `/system/framework/sony.cameraex.odex` du NEX-5R (firmware 1.03), d'où le plantage de FocusBracket au lancement. En revanche, `CameraEx.shiftFocusPosition(int pas)` (déplacement relatif, renvoie un booléen) existe ; l'app Sony Bracket Pro, installée sur l'appareil, l'utilise pour son bracketing de mise au point.
 - Le bracketing de mise au point de Bracket Pro **fonctionne** avec le Sigma 30mm DC DN (2026-11-02) : `shiftFocusPosition` pilote bien cet objectif, au moins pendant une rafale.
-- `shiftFocusPosition` fonctionne-t-il hors d'une rafale (appareil au repos, en MF) ? Combien de pas pour toute la course ? Le déplacement est-il reproductible (aller-retour au même point) ?
+- ~~`shiftFocusPosition` fonctionne-t-il hors d'une rafale ?~~ **Oui (2026-11-02, app `camera-app`)** : la mise au point bouge appareil au repos, en mode `auto`, `dmf` et `manual`. Paramètres caméra : `focus-shift-supported=true`, **±16 pas maximum par appel**. Appelée depuis le fil principal (UI) de l'app, la fonction ne rend jamais la main : il faut toujours l'appeler depuis un autre fil.
+- **Sémantique confirmée (2026-11-03)** : l'argument est un **décalage absolu** par rapport à un point de référence, borné à [−16, +16], pas un déplacement relatif. Répéter `shift(16)` ne fait rien ; `shift(16)` puis `shift(4)` fait revenir la mise au point. Chaque appel renvoie `true` en 230 à 300 ms.
+- **Conditions de fonctionnement (2026-11-03)** :
+  - sans autofocus depuis l'ouverture de la caméra, l'appel **bloque indéfiniment** et fige l'appareil (redémarrage obligatoire) ;
+  - un autofocus lancé en mode `manual` évite le blocage, mais l'objectif **ne bouge pas** (les appels renvoient pourtant `true`) ;
+  - après un **vrai autofocus en mode `auto`**, les décalages font bouger l'objectif en mode `auto`, mais plus après un passage en `manual` ;
+  - un changement de mode ne redéfinit pas le point de référence.
+  
+  Modèle de fonctionnement : comme Bracket Pro, autofocus en mode `auto`, puis décalages de −16 à +16 autour du point trouvé.
+- **Mesures (2026-11-03)** : la fenêtre ±16 est **petite** (différence à peine visible sur un objet à 1 m) : les pas sont fins, adaptés à l'affinage de l'autofocus N.I.N.A. Le mode `dmf` se comporte comme `auto`. Après un **autofocus raté** (mur uni), les décalages fonctionnent toujours.
+- **Modèle retenu pour le focuser Alpaca** : positions absolues 0 à 32 (= décalage −16 à +16), point 16 = résultat de l'autofocus de l'appareil, lancé une fois pour armer le pilotage. Mise au point approximative préalable : autofocus sur un objet lointain au crépuscule, ou retouche à la bague en `dmf` (à tester).
+- Le retour à une même valeur est-il reproductible ? La retouche à la bague en `dmf` déplace-t-elle le point de référence ?
 - Les poses longues (Bulb) sont-elles accessibles depuis une app embarquée ?
 - L'app peut-elle lire les fichiers ARW de la carte SD pendant que l'appareil tourne ?
 - Le Wi-Fi reste-t-il stable pendant une nuit entière avec une app custom ?
