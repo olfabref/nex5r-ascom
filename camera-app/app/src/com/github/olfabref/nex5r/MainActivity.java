@@ -603,13 +603,19 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
                 return bulb.state();
             }
 
-            public String capture(final int seconds, final String method, final boolean af) {
+            public String iso(final int value) {
+                return onUi(new java.util.concurrent.Callable<String>() {
+                    public String call() { return bulb.setIso(value); }
+                });
+            }
+
+            public String capture(final int ms, final String method, final boolean af) {
                 // Camera calls must run on the UI thread: post and wait for the outcome.
                 final String[] result = {"timeout waiting for the UI thread"};
                 final java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(1);
                 ticker.post(new Runnable() {
                     public void run() {
-                        result[0] = bulb.startExposure(seconds, method, af);
+                        result[0] = bulb.startExposure(ms, method, af);
                         refresh();
                         done.countDown();
                     }

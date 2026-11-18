@@ -13,7 +13,7 @@ import java.io.File;
  * Bulb test: can an embedded app make a timed long exposure?
  *
  * Plan: switch to manual exposure (scene-mode "manual-exposure"), step the shutter speed past 30"
- * until the camera reports Bulb, then takePicture() and cancelTakePicture() N seconds later,
+ * until the camera reports Bulb, then takePicture() and cancelTakePicture() N milliseconds later,
  * which is what pressing and releasing the shutter button does. Every Sony callback is logged
  * with its time since the start of the exposure, plus the new files in DCIM.
  *
@@ -237,7 +237,8 @@ final class BulbTest {
      * HTTP it never opens the shutter (onShutter "canceled" only at cancelTakePicture, no file), and
      * the software autoFocus never calls back.
      */
-    String startExposure(int seconds, String method, boolean af) {
+    String startExposure(int ms, String method, boolean af) {
+        final int seconds = ms;   // milliseconds since 2026-11-18 (Alpaca durations)
         if (camera == null) return "no camera";
         if (isExposing()) return "busy: exposure running";
         if (!java.util.Arrays.asList("normal", "burstable", "direct", "dnormal", "dburst").contains(method)
@@ -261,7 +262,7 @@ final class BulbTest {
             handler.postDelayed(new Runnable() {
                 public void run() { open(s0); }
             }, 1000);
-            lastResult = "BULB " + seconds + " s: direct mode, opening in 1 s";
+            lastResult = "BULB " + seconds / 1000.0 + " s: direct mode, opening in 1 s";
             return lastResult;
         }
         if (method.startsWith("af")) {
@@ -306,7 +307,7 @@ final class BulbTest {
                 open.run();
             }
         }, 3000);
-        lastResult = "BULB " + seconds + " s: focusing";
+        lastResult = "BULB " + seconds / 1000.0 + " s: focusing";
         return lastResult;
     }
 
@@ -314,7 +315,8 @@ final class BulbTest {
     private volatile Runnable pendingOpen;   // run by onAutoFocusDone (af=1)
     private CameraEx.AutoPictureReviewControl reviewControl;
 
-    private void open(int seconds) {
+    private void open(int ms) {
+        final int seconds = ms;
         exposureStart = System.currentTimeMillis();
         try {
             if ("burstable".equals(method) || "dburst".equals(method) || "afburst".equals(method)) {
@@ -331,11 +333,11 @@ final class BulbTest {
                 camera.getNormalCamera().takePicture(null, null, null);
             }
             boolean bulb = BULB.equals(shutterSpeed);
-            lastResult = (bulb ? "BULB exposing " + seconds + " s" : "NOT BULB: shutter " + shutterSpeed + ", duration ignored")
+            lastResult = (bulb ? "BULB exposing " + seconds / 1000.0 + " s" : "NOT BULB: shutter " + shutterSpeed + ", duration ignored")
                     + " (" + method + ")";
             Logger.info(method + " open called at shutter " + shutterSpeed + (bulb ? " (bulb)" : " (NOT bulb)")
-                    + ", close in " + seconds + " s");
-            handler.postDelayed(endExposure, seconds * 1000L);
+                    + ", close in " + seconds / 1000.0 + " s");
+            handler.postDelayed(endExposure, seconds);
             handler.postDelayed(tick, 1000);
         } catch (Throwable t) {
             exposureStart = 0;
@@ -361,7 +363,49 @@ final class BulbTest {
     /** One line per field, for HTTP /status. */
     String state() {
         return "shutter=" + shutterSpeed + "\nbulb=" + BULB.equals(shutterSpeed) + "\nexposing=" + isExposing()
+                + "\niso=" + iso() + "\nisos=" + isos()
                 + "\ninhibition=" + inhibition() + "\nlast=" + lastResult + "\n";
+    }
+
+    /** Current ISO (ParametersModifier.getISOSensitivity; 0 = auto), or "-" / the error. */
+    private String iso() {
+        if (camera == null) return "-";
+        try {
+            return String.valueOf(camera.createParametersModifier(camera.getNormalCamera().getParameters())
+                    .getISOSensitivity());
+        } catch (Throwable t) {
+            return "? " + t;
+        }
+    }
+
+    /** Supported ISO values, comma-separated. */
+    private String isos() {
+        if (camera == null) return "-";
+        try {
+            java.util.List<?> l = camera.createParametersModifier(camera.getNormalCamera().getParameters())
+                    .getSupportedISOSensitivities();
+            StringBuilder b = new StringBuilder();
+            for (Object o : l) b.append(b.length() == 0 ? "" : ",").append(o);
+            return b.toString();
+        } catch (Throwable t) {
+            return "? " + t;
+        }
+    }
+
+    /** Sets the ISO (must be one of {@link #isos()}); returns the state. UI thread. */
+    String setIso(int value) {
+        if (camera == null) return "no camera";
+        if (isExposing()) return "busy: exposure running";
+        try {
+            Camera.Parameters params = camera.getNormalCamera().getParameters();
+            camera.createParametersModifier(params).setISOSensitivity(value);
+            camera.getNormalCamera().setParameters(params);
+            lastResult = "iso -> " + iso();
+        } catch (Throwable t) {
+            lastResult = "setISOSensitivity(" + value + ") threw " + t;
+        }
+        Logger.info(lastResult);
+        return state();
     }
 
     /** CameraEx.getInhibitionInfo() (Sony logs it as "the factor" when a setting fails), or the error. */

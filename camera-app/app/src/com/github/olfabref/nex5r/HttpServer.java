@@ -19,9 +19,10 @@ import java.util.Comparator;
  * Minimal HTTP/1.0 server for the feasibility test: can the Mac drive a capture and fetch the ARW over Wi-Fi?
  *
  *   GET /status             camera state (text)
- *   GET /capture?seconds=N[&method=normal|burstable|direct|dnormal|dburst|afnormal|afburst][&af=1]
+ *   GET /capture?ms=N|seconds=N[&method=normal|burstable|direct|dnormal|dburst|afnormal|afburst][&af=1]
  *                           timed Bulb exposure (the shutter must already be on BULB), see BulbTest
  *   GET /shutter?dir=slower|faster  one shutter speed step
+ *   GET /iso[?value=N]      set the ISO (one of "isos" in /status); returns the status
  *   GET /preview?on=0|1     stopPreview / startPreview
  *   GET /remote?on=0|1      ParametersModifier.setRemoteControlMode
  *   GET /keyshoot?on=0|1    0: a physical full press does not call takePicture (firmware test)
@@ -50,9 +51,11 @@ final class HttpServer {
     interface Api {
         String status();
 
-        String capture(int seconds, String method, boolean af);
+        String capture(int ms, String method, boolean af);
 
         String shutter(boolean slower);
+
+        String iso(int value);
 
         String preview(boolean on);
 
@@ -148,16 +151,25 @@ final class HttpServer {
     private long route(String path, String query, OutputStream out) throws IOException {
         if (path.equals("/status")) return text(out, 200, api.status());
         if (path.equals("/capture")) {
-            int seconds;
+            int ms;
             try {
-                seconds = Integer.parseInt(param(query, "seconds"));
+                ms = param(query, "ms").length() > 0 ? Integer.parseInt(param(query, "ms"))
+                        : Integer.parseInt(param(query, "seconds")) * 1000;
             } catch (NumberFormatException e) {
-                return text(out, 400, "seconds=N required\n");
+                return text(out, 400, "ms=N or seconds=N required\n");
             }
-            if (seconds < 1 || seconds > 3600) return text(out, 400, "seconds out of 1..3600\n");
+            if (ms < 100 || ms > 3600000) return text(out, 400, "duration out of 0.1..3600 s\n");
             String method = param(query, "method");
-            return text(out, 200, api.capture(seconds, method.length() == 0 ? "normal" : method,
+            return text(out, 200, api.capture(ms, method.length() == 0 ? "normal" : method,
                     "1".equals(param(query, "af"))) + "\n");
+        }
+        if (path.equals("/iso")) {
+            if (param(query, "value").length() == 0) return text(out, 200, api.status());
+            try {
+                return text(out, 200, api.iso(Integer.parseInt(param(query, "value"))));
+            } catch (NumberFormatException e) {
+                return text(out, 400, "value=N required\n");
+            }
         }
         if (path.equals("/shutter")) {
             String dir = param(query, "dir");

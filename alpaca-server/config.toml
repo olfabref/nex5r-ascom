@@ -1,0 +1,28 @@
+title = "Sony NEX-5R Alpaca server"
+
+[network]
+ip_address = ''             # Any address
+port = 11111                # Alpaca default
+
+[server]
+location = 'Home'
+verbose_driver_exceptions = false
+
+[device]
+camera_url = 'http://192.168.0.23:8080'   # camera-app HTTP server on the NEX-5R
+# Sensor geometry of the decoded ARW (rawpy raw_image_visible), measured on DSC04104.ARW.
+sensor_x = 4920
+sensor_y = 3276
+pixel_size_um = 4.8         # APS-C 23.5 mm / 4912 px
+max_adu = 16383             # rawpy white level (14-bit scale); black level 512
+bayer_offset_x = 0          # RGGB at (0, 0); derived from rawpy raw_pattern at runtime when it differs
+bayer_offset_y = 0
+exposure_min = 1.0          # Bulb timed by the app's Handler: sub-second precision not measured
+exposure_max = 3600.0
+file_timeout = 30.0         # seconds after closing to wait for the ARW on the card
+
+[logging]
+log_level = 'INFO'
+log_to_stdout = true
+max_size_mb = 5
+num_keep_logs = 10
