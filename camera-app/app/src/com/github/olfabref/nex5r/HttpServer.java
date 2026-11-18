@@ -33,6 +33,8 @@ import java.util.Comparator;
  *                           ParametersModifier.tryIgnoreInhibit() + setParameters
  *   GET /threadshot?seconds=N[&af=0][&burst=0]  shot with the camera reopened on a HandlerThread
  *                           (Sony's way), see ThreadShot; relaunch the app afterwards
+ *   GET /tlshoot[?opts]     one shot with TimeLapse 1.4.0's sequence (TlShoot, options in its
+ *                           Javadoc); takes the camera over until the next launch
  *   GET /logcat[?bg=1|stop=1]  logcat ring buffer; bg=1 starts a detached logcat to SRLOG.TXT;
  *                           stop=1 kills it (the FAT driver locks an open file)
  *   GET /srlog              /mnt/sdcard/SRLOG.TXT
@@ -69,6 +71,8 @@ final class HttpServer {
         String camThread(boolean on);
 
         String caution(int mode, String media);
+
+        String tlShoot(String opts);
     }
 
     private final Api api;
@@ -191,6 +195,7 @@ final class HttpServer {
             return text(out, 200, api.threadShot(seconds, !"0".equals(param(query, "af")),
                     !"0".equals(param(query, "burst"))) + "\n");
         }
+        if (path.equals("/tlshoot")) return text(out, 200, api.tlShoot(query == null ? "" : query) + "\n");
         if (path.equals("/srlog")) return file(out, new File("/mnt/sdcard/SRLOG.TXT"), "text/plain");
         if (path.equals("/logcat")) {
             if ("1".equals(param(query, "stop"))) return text(out, 200, stopLogcats());

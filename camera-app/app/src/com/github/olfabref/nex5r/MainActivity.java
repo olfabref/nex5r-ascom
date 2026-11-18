@@ -46,6 +46,7 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
     private DisplayManager displayManager;
     private CameraEx camera;
     private final ThreadShot threadShot = new ThreadShot();
+    private final TlShoot tlShoot = new TlShoot(this);
     private com.sony.scalar.sysutil.didep.Caution caution;   // kept alive: holds the callback
     private int noIpTicks = 0;   // wifiWatch ticks (2 s) without an IP
 
@@ -94,6 +95,7 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
     protected void onResume() {
         super.onResume();
         notifyAppInfo();
+        setAutoPowerOff(false);
 
         displayManager = DisplayManager.create(this);
         // Live view and UI overlay only show correctly together in low color depth (as in PMCADemo).
@@ -138,12 +140,14 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
             camera = null;
         }
         threadShot.release();
+        tlShoot.release();
         if (displayManager != null) {
             displayManager.setColorDepth(DisplayManager.ColorDepth.HIGH);
             displayManager.release();
             displayManager = null;
         }
         armed = false;
+        setAutoPowerOff(true);
         Logger.info("=== Focus test end: offset " + offset + ", " + calls + " calls, " + failures + " failed");
     }
 
@@ -489,6 +493,22 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
                 });
             }
 
+            public String tlShoot(final String opts) {
+                return onUi(new java.util.concurrent.Callable<String>() {
+                    public String call() {
+                        if (camera != null) {
+                            // Hand the camera over to TlShoot: release the UI-thread one first.
+                            bulb.detach();
+                            camera.release();
+                            camera = null;
+                            Logger.info("UI-thread camera released for tlshoot");
+                        }
+                        threadShot.release();
+                        return tlShoot.start(opts, surfaceHolder);
+                    }
+                });
+            }
+
             public String camThread(boolean on) {
                 getSharedPreferences("test", MODE_PRIVATE).edit().putBoolean("camthread", on).commit();
                 Logger.info("camthread -> " + on + " (next launch)");
@@ -712,6 +732,18 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
             }
         }
         return false;
+    }
+
+    /**
+     * APO/NO disables auto power off. Required for any software shot on the NEX-5R (2026-11-18): without
+     * it burstableTakePicture / takePicture wait forever (onShutter "canceled" at cancelTakePicture, no
+     * file); found by bisecting TimeLapse 1.4.0's sequence, see TlShoot. APO/NORMAL restores it on exit.
+     */
+    void setAutoPowerOff(boolean enable) {
+        android.content.Intent i = new android.content.Intent("com.android.server.DAConnectionManagerService.apo");
+        i.putExtra("apo_info", enable ? "APO/NORMAL" : "APO/NO");
+        sendBroadcast(i);
+        Logger.info("auto power off " + (enable ? "APO/NORMAL" : "APO/NO"));
     }
 
     /** notifyAppInfo mode for the next launch ("plain" or "sony"), set by HTTP /appinfo. */
