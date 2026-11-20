@@ -12,12 +12,15 @@ The NEX5R_RELEASES_URL environment variable points the lookup elsewhere (the tes
 import json
 import logging
 import os
+import ssl
 import threading
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Callable
+
+import truststore
 
 from version import __version__
 
@@ -75,11 +78,21 @@ def http_request(url: str, headers: dict | None = None) -> urllib.request.Reques
     return urllib.request.Request(url, headers={'User-Agent': f'nex5r-ascom/{__version__}', **(headers or {})})
 
 
+# The OS trust store (Keychain, Windows store) rather than Python's own CA bundle, which python.org's
+# Python on macOS does not ship: without it every HTTPS request fails with CERTIFICATE_VERIFY_FAILED.
+_SSL_CONTEXT = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+
+
+def open_url(req: urllib.request.Request, timeout: float):
+    """urlopen() with certificates checked against the OS trust store; also used by the Update."""
+    return urllib.request.urlopen(req, timeout=timeout, context=_SSL_CONTEXT)
+
+
 def latest_release(url: str = RELEASES_URL, timeout: float = TIMEOUT) -> Release | None:
     """The latest Release on GitHub, or None when the repository has none yet; ReleaseError otherwise."""
     req = http_request(url, {'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28'})
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
+        with open_url(req, timeout) as r:
             body = json.loads(r.read())
     except urllib.error.HTTPError as e:
         if e.code == 404:

@@ -16,7 +16,6 @@ import subprocess
 import sys
 import tempfile
 import threading
-import urllib.request
 from pathlib import Path
 from typing import Callable
 
@@ -77,7 +76,7 @@ def download(url: str, to: Path, timeout: float = TIMEOUT) -> str:
     req = release.http_request(url)
     digest = hashlib.sha256()
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as r, open(to, 'wb') as f:
+        with release.open_url(req, timeout) as r, open(to, 'wb') as f:
             while chunk := r.read(1 << 16):
                 digest.update(chunk)
                 f.write(chunk)

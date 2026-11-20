@@ -4,6 +4,8 @@ rawpy==0.28.0
 toml==0.10.2
 # Dashboard settings: writes config.toml back keeping its comments (config.save_device)
 tomlkit==0.15.2
+# HTTPS to GitHub checked against the OS trust store (release.open_url)
+truststore==0.10.5
 # tray icon (tray.py) and what pystray needs on each OS
 pillow==12.3.0
 pystray==0.19.5
