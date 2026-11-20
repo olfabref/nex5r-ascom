@@ -19,6 +19,7 @@ Based on the official ASCOM [AlpycaDevice](https://github.com/ASCOMInitiative/Al
 - `dashboard.py`, `dashboard.html`: the Dashboard (see Dashboard).
 - `release.py`: New Release detection (see Dashboard).
 - `config-template.toml`: the template of the configuration (see Configuration).
+- `installer/`: the Windows installer (see Windows installer).
 - `tests/`: the test bench (see Tests).
 
 ## Dashboard
@@ -70,6 +71,20 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 ```
 
 NEX5R Dev must be running on the camera (it turns Wi-Fi on and joins the network itself).
+
+## Windows installer
+
+On Windows the server needs no Python (ADR 0002): download `nex5r-ascom-setup.exe` from the latest Release, check it against `SHA256SUMS` (`certutil -hashfile nex5r-ascom-setup.exe SHA256`) and run it. It installs for the current user only, without admin rights:
+
+- the server, frozen with PyInstaller (`onedir`, Python and rawpy included), in `%LOCALAPPDATA%\Programs\nex5r-ascom`, with its log `alpyca.log` there;
+- start at login: a shortcut in the user's Startup folder (`shell:startup`), also one in the Start menu. The server has no window: open the Dashboard to see it running;
+- the configuration stays in `%APPDATA%\nex5r-ascom\config.toml` (see Configuration): the installer never touches it, so a reinstall, an Update or an uninstall keeps it.
+
+The installer is not code-signed, so on first launch Windows SmartScreen shows "Windows protected your PC": click **More info**, then **Run anyway**. Check the SHA-256 first.
+
+Silent mode (used by the Update): `nex5r-ascom-setup.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART`. It stops a running server, installs, then starts the new server. Uninstall from Windows Settings > Apps, or silently with `%LOCALAPPDATA%\Programs\nex5r-ascom\unins000.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART`: it stops the server and removes the files and the start at login, not the configuration.
+
+To build it (on Windows, Python 3.12): `pwsh alpaca-server/installer/build.ps1` writes `alpaca-server/dist/nex5r-ascom-setup.exe` (PyInstaller with `installer/nex5r-ascom.spec`, then Inno Setup 6 with `installer/nex5r-ascom.iss`, installed through Chocolatey if missing). A data file that the server reads next to its code must be listed in the spec's `datas`; `.github/tests/test_installer.py` fails otherwise. CI (`Windows installer` job, on every PR and in the release workflow) runs `installer/check_install.py`: silent install, the server answers the Alpaca management API, reinstall on top keeps the configuration, uninstall removes the start at login.
 
 ## Tests
 
