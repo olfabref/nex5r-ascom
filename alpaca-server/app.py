@@ -230,12 +230,13 @@ def falcon_uncaught_exception_handler(req: Request, resp: Response, ex: BaseExce
 def main(argv: list[str] | None = None):
     """ Application startup"""
 
-    # nex5r-ascom: --config PATH loads the configuration from PATH instead of ./config.toml
+    # nex5r-ascom: --config PATH loads the configuration from PATH instead of the user's config.toml
     parser = argparse.ArgumentParser(description='Sony NEX-5R Alpaca server')
-    parser.add_argument('--config', metavar='PATH', help='configuration file (default: config.toml next to app.py)')
+    parser.add_argument('--config', metavar='PATH',
+                        help=f'configuration file (default: {config.user_config_path()}, '
+                             'created from config-template.toml on first launch)')
     args = parser.parse_args(argv)
-    if args.config:
-        config.load(args.config)
+    config.load(args.config)
 
     logger = log.init_logging()
     # Share this logger throughout
