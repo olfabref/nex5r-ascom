@@ -3,6 +3,7 @@ same plain-text replies, backed by a little state machine instead of the Camera.
 
 Each Bulb exposure (/capture?ms=N) writes tests/data/sample.ARW to the fake card N ms later.
 """
+import json
 import threading
 import time
 import urllib.parse
@@ -10,6 +11,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 SAMPLE_ARW = (Path(__file__).parent / 'data' / 'sample.ARW').read_bytes()
+# camera-app and the Alpaca Server share one Version (ADR 0001): the fake reports the current one.
+VERSION = json.loads((Path(__file__).parents[2] / '.release-please-manifest.json').read_text(encoding='utf-8'))['.']
 
 # Shutter speeds from 30" to Bulb, as the camera steps them with /shutter?dir=slower.
 SHUTTER_SPEEDS = ['10/1', '13/1', '15/1', '20/1', '25/1', '30/1', '65535/1']
@@ -22,6 +25,7 @@ class FakeCamera:
 
     def __init__(self):
         self._lock = threading.Lock()
+        self.version = VERSION
         self.shutter_index = 0
         self.iso = 100
         self.exposing = False
@@ -48,7 +52,7 @@ class FakeCamera:
                 f'focus_last={self.focus_last}\n')
 
     def status(self) -> str:
-        return 'ip=127.0.0.1\n' + self.bulb_state() + self.focus_state()
+        return f'version={self.version}\nip=127.0.0.1\n' + self.bulb_state() + self.focus_state()
 
     def step_shutter(self, slower: bool) -> str:
         with self._lock:

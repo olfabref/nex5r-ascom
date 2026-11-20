@@ -22,11 +22,12 @@ def free_port() -> int:
         return s.getsockname()[1]
 
 
-def write_config(path: Path, camera_url: str, port: int, location: str = 'Test bench') -> Path:
+def write_config(path: Path, camera_url: str, port: int, location: str = 'Test bench',
+                 ip_address: str = '127.0.0.1') -> Path:
     """A config.toml like the shipped one, for the sample ARW (64 x 40) and a local camera-app."""
     path.write_text(f"""
 [network]
-ip_address = '127.0.0.1'
+ip_address = '{ip_address}'
 port = {port}
 
 [server]
