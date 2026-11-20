@@ -1,11 +1,11 @@
 """The tray icon of the Alpaca Server: in the Windows system tray, or the Mac menu bar (from the sources).
 
-It shows that the server is running (and its Version), flags a new Release (release.checker), opens the
-Dashboard in the browser and quits the server. pystray needs the main thread (AppKit on Mac), so
+It shows that the Alpaca Server is running (and its Version), flags a new Release (release.checker), opens
+the Dashboard in the browser and quits the Alpaca Server. pystray needs the main thread (AppKit on Mac), so
 app.main serves HTTP on another thread while run() blocks here.
 
 The icon is optional: `app.py --no-tray` (tests, CI) never imports pystray, and when no tray can be
-shown (no desktop session, pystray missing) run() logs why and returns False: the server keeps serving.
+shown (no desktop session, pystray missing) run() logs why and returns False: the Alpaca Server keeps serving.
 """
 import logging
 import webbrowser
@@ -41,7 +41,7 @@ def icon_image(update_available: bool = False) -> Image.Image:
 class Tray:
     def __init__(self, url: str, version: str, quit: Callable[[], None], checker=None,
                  logger: logging.Logger | None = None):
-        """url: the Dashboard; quit: stops the server (called on the tray's thread before the icon goes);
+        """url: the Dashboard; quit: stops the Alpaca Server (called on the tray's thread before the icon goes);
         checker: a release.ReleaseCheck, or None."""
         self.url = url
         self.version = version
@@ -66,7 +66,7 @@ class Tray:
 
     @property
     def running(self) -> bool:
-        """The icon is shown (run() is blocking): quit() stops it as well as the server."""
+        """The icon is shown (run() is blocking): quit() stops it as well as the Alpaca Server."""
         return self._icon is not None
 
     # -- menu actions
@@ -118,7 +118,7 @@ class Tray:
             self._icon.run()
             return True
         except Exception as e:
-            self._log.warning(f'[tray] no tray icon ({type(e).__name__}: {e}); the server runs without it')
+            self._log.warning(f'[tray] no tray icon ({type(e).__name__}: {e}); the Alpaca Server runs without it')
             if self._checker and self._refresh in self._checker.on_change:
                 self._checker.on_change.remove(self._refresh)
             self._icon = None

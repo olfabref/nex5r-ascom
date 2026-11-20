@@ -167,8 +167,7 @@ def load(path: str | Path | None = None):
     c.max_adu = get_toml('device', 'max_adu')
     c.bayer_offset_x = get_toml('device', 'bayer_offset_x')
     c.bayer_offset_y = get_toml('device', 'bayer_offset_y')
-    c.sensor_type = get_toml('device', 'sensor_type')
-    c.sensor_mono = c.sensor_type == 'mono'
+    _load_sensor_type()
     c.exposure_min = get_toml('device', 'exposure_min')
     c.exposure_max = get_toml('device', 'exposure_max')
     c.file_timeout = get_toml('device', 'file_timeout')
@@ -179,6 +178,12 @@ def load(path: str | Path | None = None):
     c.log_to_stdout = get_toml('logging', 'log_to_stdout')
     c.max_size_mb = get_toml('logging', 'max_size_mb')
     c.num_keep_logs = get_toml('logging', 'num_keep_logs')
+
+
+def _load_sensor_type():
+    """Config.sensor_type from the configuration, and Config.sensor_mono, derived from it."""
+    Config.sensor_type = get_toml('device', 'sensor_type')
+    Config.sensor_mono = Config.sensor_type == 'mono'
 
 
 def save_device(**values):
@@ -208,5 +213,4 @@ def save_device(**values):
     if 'camera_url' in values:
         Config.camera_url = get_toml('device', 'camera_url')
     if 'sensor_type' in values:
-        Config.sensor_type = get_toml('device', 'sensor_type')
-        Config.sensor_mono = Config.sensor_type == 'mono'
+        _load_sensor_type()

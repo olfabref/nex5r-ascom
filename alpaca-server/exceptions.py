@@ -51,6 +51,12 @@ global logger
 #logger: Logger = None
 logger = None                   # Safe on Python 3.7 but no intellisense in VSCode etc.
 
+
+class Refused(Exception):
+    """nex5r-ascom: a Dashboard Action (Arming, settings, the Update...) that cannot run now; its
+    message is the refusal shown on the page (dashboard.py answers HTTP 409)."""
+
+
 class Success:
     """Default err input to response classes, indicates success"""
 

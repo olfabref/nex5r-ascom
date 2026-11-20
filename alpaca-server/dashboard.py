@@ -7,7 +7,7 @@ per section (see SECTIONS), plus the derived `version_mismatch`:
    "camera_app": {"reachable": true, "version": "0.1.0", "error": null},
    "camera":     {"connected": false, "state": "IDLE", "exposing": false},
    "focuser":    {"connected": false, "armed": false, "position": 16, "moving": false},
-   "settings":   {"camera_url": "http://192.168.0.23:8080", "sensor_type": "color", "editable": true,
+   "settings":   {"camera_url": "http://192.168.0.10:8080", "sensor_type": "color", "editable": true,
                   "locked_by": []},
    "release":    {"state": "available", "update_available": true, "current": "0.1.0", "latest": "0.2.0",
                   "url": "https://github.com/.../releases/tag/v0.2.0", "checked_at": "...", "error": null},
@@ -23,7 +23,7 @@ the page shows the message:
   200  the Action ran; the message says what it did
   400  a confirm Action without "confirmed": true in the body, or a body that is not a JSON object
   404  no such Action
-  409  refused: the Action cannot run now (its function raised Refused('why'))
+  409  refused: the Action cannot run now (its function raised exceptions.Refused('why'))
   415  not application/json, so a plain form on another site cannot trigger an Action
 
 The confirmation is asked on the page and required again here.
@@ -42,11 +42,13 @@ from falcon import App, Request, Response
 
 import camera
 import config
+import devices
 import focuser
 import release
 import update
 from cameradevice import CameraState
 from config import SENSOR_TYPES, Config
+from exceptions import Refused
 from nex5r import CameraError, Nex5r
 from shr import log_request
 from version import __version__
@@ -63,11 +65,17 @@ class CameraAppProbe:
     shared by every open Dashboard, with a short timeout so that a stopped camera-app shows at once."""
 
     def __init__(self, url: str, timeout: float = 1.5, max_age: float = 1.0):
-        self.cam = Nex5r(url, timeout=timeout)
+        self.timeout = timeout
         self.max_age = max_age
         self._lock = threading.Lock()
-        self._at = float('-inf')
-        self._state: dict = {}
+        self.retarget(url)
+
+    def retarget(self, url: str):
+        """camera-app at url from now on; the next state() asks it at once."""
+        with self._lock:
+            self.cam = Nex5r(url, timeout=self.timeout)
+            self._at = float('-inf')
+            self._state: dict = {}
 
     def state(self) -> dict:
         with self._lock:
@@ -106,13 +114,9 @@ def _focuser() -> dict:
     return {'connected': dev.connected, 'armed': dev.armed, 'position': dev.position, 'moving': dev.is_moving}
 
 
-def _connected_devices() -> list[str]:
-    return [name for name, dev in (('Camera', camera.dev), ('Focuser', focuser.dev)) if dev.connected]
-
-
 def _settings() -> dict:
     """The settings the page can edit (the 'settings' Action); editable while no Device is Connected."""
-    locked_by = _connected_devices()
+    locked_by = devices.connected()
     return {'camera_url': Config.camera_url, 'sensor_type': Config.sensor_type, 'editable': not locked_by,
             'locked_by': locked_by}
 
@@ -148,14 +152,18 @@ def status() -> dict:
     return out
 
 
-class Refused(Exception):
-    """An Action that cannot run now; its message is the refusal shown on the page."""
-
-
 @dataclass(frozen=True)
 class Action:
     run: Callable[[dict], str]      # the request's JSON body -> message for the page; raises Refused
     confirm: bool = False           # True: refused unless the body has "confirmed": true
+
+
+def _refuse_while_connected(before: str):
+    """Refused while a Device is Connected: the message asks to disconnect it in N.I.N.A. `before`..."""
+    names = devices.connected()
+    if names:
+        raise Refused(f'{" and ".join(names)} Connected: disconnect {"them" if len(names) > 1 else "it"} '
+                      f'in N.I.N.A. {before}')
 
 
 def _arm_focuser(body: dict) -> str:
@@ -168,21 +176,15 @@ def _arm_focuser(body: dict) -> str:
     except (RuntimeError, CameraError) as e:
         raise Refused(f'Cannot arm the Focuser: {e}.')
     if not focuser.dev.armed:
-        raise Refused('The camera did not arm the Focuser: try again.')
+        raise Refused('The Camera did not arm the Focuser: try again.')
     return f'Focuser armed at position {focuser.dev.position}.'
 
 
 def _update_server(body: dict) -> str:
-    """The Update stops the server: never while N.I.N.A. holds a Device. Returns once the download has
-    started; the update section reports what follows."""
-    connected = [name for name, dev in (('Camera', camera.dev), ('Focuser', focuser.dev)) if dev.connected]
-    if connected:
-        raise Refused(f'The {" and the ".join(connected)} {"is" if len(connected) == 1 else "are"} Connected: '
-                      'disconnect in N.I.N.A. first, the Update restarts the Alpaca Server.')
-    try:
-        return update.updater.start()
-    except update.Refused as e:
-        raise Refused(str(e))
+    """The Update stops the Alpaca Server: never while N.I.N.A. holds a Device. Returns once the download
+    has started; the update section reports what follows."""
+    _refuse_while_connected('first: the Update restarts the Alpaca Server.')
+    return update.updater.start()
 
 
 EDITABLE = ('camera_url', 'sensor_type')
@@ -192,7 +194,7 @@ def _camera_url(value) -> str:
     url = value.strip().rstrip('/') if isinstance(value, str) else ''
     parts = urllib.parse.urlsplit(url)
     if parts.scheme != 'http' or not parts.hostname or parts.path or parts.query or parts.fragment:
-        raise Refused(f'{value!r} is not a camera-app address such as http://192.168.0.23:8080.')
+        raise Refused(f'{value!r} is not a camera-app address such as http://192.168.0.10:8080.')
     try:
         parts.port
     except ValueError:
@@ -202,10 +204,8 @@ def _camera_url(value) -> str:
 
 def _use_camera_url(url: str):
     """Every client of camera-app talks to url from now on (no Device is Connected)."""
-    global _probe
-    camera.dev.cam = Nex5r(url)
-    focuser.dev.cam = Nex5r(url)
-    _probe = CameraAppProbe(url)
+    devices.retarget(url)
+    _probe.retarget(url)
 
 
 def _save_settings(body: dict) -> str:
@@ -219,10 +219,7 @@ def _save_settings(body: dict) -> str:
                       f'in {config.loaded_path} and restart the Alpaca Server.')
     if not values:
         raise Refused('Nothing to change: give camera_url and/or sensor_type.')
-    locked_by = _connected_devices()
-    if locked_by:
-        raise Refused(f'{" and ".join(locked_by)} Connected: disconnect '
-                      f'{"them" if len(locked_by) > 1 else "it"} in N.I.N.A. before changing the settings.')
+    _refuse_while_connected('before changing the settings.')
     if 'camera_url' in values:
         values['camera_url'] = _camera_url(values['camera_url'])
     if 'sensor_type' in values and values['sensor_type'] not in SENSOR_TYPES:

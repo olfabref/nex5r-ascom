@@ -130,7 +130,7 @@ def test_saving_the_shipped_config_changes_only_the_two_values(tmp_path, newline
 
     config.save_device(camera_url='http://10.0.0.7:8080', sensor_type='mono')
 
-    expected = template.replace("camera_url = 'http://192.168.0.23:8080'   #",
+    expected = template.replace("camera_url = 'http://192.168.0.10:8080'   #",
                                 "camera_url = 'http://10.0.0.7:8080'   #").replace(
                                 "sensor_type = 'color'       #", "sensor_type = 'mono'       #")
     assert path.read_bytes() == expected.replace('\n', newline).encode('utf-8')
@@ -142,8 +142,8 @@ def test_saving_the_shipped_config_changes_only_the_two_values(tmp_path, newline
 @pytest.mark.parametrize('body, why', [
     ({'location': 'Field'}, 'Only camera_url and sensor_type'),
     ({'camera_url': 'http://10.0.0.5:8080', 'port': 1}, 'Only camera_url and sensor_type'),
-    ({'camera_url': '192.168.0.23:8080'}, 'is not a camera-app address'),
-    ({'camera_url': 'http://192.168.0.23:8080/status'}, 'is not a camera-app address'),
+    ({'camera_url': '192.168.0.10:8080'}, 'is not a camera-app address'),
+    ({'camera_url': 'http://192.168.0.10:8080/status'}, 'is not a camera-app address'),
     ({'camera_url': 42}, 'is not a camera-app address'),
     ({'sensor_type': 'rgb'}, "sensor_type must be 'color' or 'mono'"),
     ({}, 'Nothing to change'),

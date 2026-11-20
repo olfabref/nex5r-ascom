@@ -9,7 +9,7 @@ location = 'Home'
 verbose_driver_exceptions = false
 
 [device]
-camera_url = 'http://192.168.0.23:8080'   # camera-app HTTP server on the NEX-5R
+camera_url = 'http://192.168.0.10:8080'   # camera-app HTTP server on the NEX-5R
 # Sensor geometry of the decoded ARW (rawpy raw_image_visible), measured on DSC04104.ARW.
 sensor_x = 4920
 sensor_y = 3276
