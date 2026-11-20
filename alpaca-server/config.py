@@ -42,22 +42,18 @@
 # 20-Ferb-2024  rbd 0.7 Add sync_write_connected to control sync/async
 #               write-Connected behavior.
 #
+# nex5r-ascom: the configuration can be loaded from an explicit path (load(), app.py --config);
+#               without one, config.toml next to the script as before.
+#
 import sys
 import toml
 import logging
 
+DEFAULT_PATH = f'{sys.path[0]}/config.toml'
+OVERRIDE_PATH = '/alpyca/config.toml'
+
 _dict = {}
-_dict = toml.load(f'{sys.path[0]}/config.toml')    # Errors here are fatal.
 _dict2 = {}
-try:
-    # ltf - this file, if it exists can override or supplement definitions
-    # in the normal config.toml. This facilitates putting the driver in a
-    # docker container where installation specific configuration can be
-    # put in a file that isn't pulled from a repository
-    _dict2 = toml.load('/alpyca/config.toml')
-except:
-    _dict2 = {}
-    # file is optional so it's ok if it isn't there
 
 def get_toml(sect: str, item: str):
     setting = ''
@@ -75,36 +71,79 @@ class Config:
     """Device configuration. For docker based installation specific
         configuration, will first look for ``/alpyca/config.toml``
         and if exists, any setting there will override those in
-        ``./config.toml`` (the default settings file).
+        ``./config.toml`` (the default settings file), or in the
+        file given to :py:func:`load`.
     """
+    # Set by load(), see there.
+    ip_address: str
+    port: int
+    location: str
+    verbose_driver_exceptions: bool
+    camera_url: str
+    sensor_x: int
+    sensor_y: int
+    pixel_size_um: float
+    max_adu: int
+    bayer_offset_x: int
+    bayer_offset_y: int
+    sensor_mono: bool
+    exposure_min: float
+    exposure_max: float
+    file_timeout: float
+    focus_arm_mode: str
+    focus_drive_mode: str
+    focus_arm_on_connect: bool
+    log_level: int
+    log_to_stdout: str
+    max_size_mb: int
+    num_keep_logs: int
+
+
+def load(path: str | None = None):
+    """(Re)loads :py:class:`Config` from ``path`` (default: config.toml next to the script)."""
+    global _dict, _dict2
+    _dict = toml.load(path or DEFAULT_PATH)     # Errors here are fatal.
+    try:
+        # ltf - this file, if it exists can override or supplement definitions
+        # in the normal config.toml. This facilitates putting the driver in a
+        # docker container where installation specific configuration can be
+        # put in a file that isn't pulled from a repository
+        _dict2 = toml.load(OVERRIDE_PATH)
+    except:
+        _dict2 = {}
+        # file is optional so it's ok if it isn't there
+    c = Config
     # ---------------
     # Network Section
     # ---------------
-    ip_address: str = get_toml('network', 'ip_address')
-    port: int = get_toml('network', 'port')
+    c.ip_address = get_toml('network', 'ip_address')
+    c.port = get_toml('network', 'port')
     # --------------
     # Server Section
     # --------------
-    location: str = get_toml('server', 'location')
-    verbose_driver_exceptions: bool = get_toml('server', 'verbose_driver_exceptions')
+    c.location = get_toml('server', 'location')
+    c.verbose_driver_exceptions = get_toml('server', 'verbose_driver_exceptions')
     # --------------
     # Device Section
     # --------------
-    camera_url: str = get_toml('device', 'camera_url')
-    sensor_x: int = get_toml('device', 'sensor_x')
-    sensor_y: int = get_toml('device', 'sensor_y')
-    pixel_size_um: float = get_toml('device', 'pixel_size_um')
-    max_adu: int = get_toml('device', 'max_adu')
-    bayer_offset_x: int = get_toml('device', 'bayer_offset_x')
-    bayer_offset_y: int = get_toml('device', 'bayer_offset_y')
-    sensor_mono: bool = get_toml('device', 'sensor_type') == 'mono'
-    exposure_min: float = get_toml('device', 'exposure_min')
-    exposure_max: float = get_toml('device', 'exposure_max')
-    file_timeout: float = get_toml('device', 'file_timeout')
-    focus_arm_mode: str = get_toml('focuser', 'arm_mode')
-    focus_drive_mode: str = get_toml('focuser', 'drive_mode')
-    focus_arm_on_connect: bool = get_toml('focuser', 'arm_on_connect')
-    log_level: int = logging.getLevelName(get_toml('logging', 'log_level'))  # Not documented but works (!!!!)
-    log_to_stdout: str = get_toml('logging', 'log_to_stdout')
-    max_size_mb: int = get_toml('logging', 'max_size_mb')
-    num_keep_logs: int = get_toml('logging', 'num_keep_logs')
+    c.camera_url = get_toml('device', 'camera_url')
+    c.sensor_x = get_toml('device', 'sensor_x')
+    c.sensor_y = get_toml('device', 'sensor_y')
+    c.pixel_size_um = get_toml('device', 'pixel_size_um')
+    c.max_adu = get_toml('device', 'max_adu')
+    c.bayer_offset_x = get_toml('device', 'bayer_offset_x')
+    c.bayer_offset_y = get_toml('device', 'bayer_offset_y')
+    c.sensor_mono = get_toml('device', 'sensor_type') == 'mono'
+    c.exposure_min = get_toml('device', 'exposure_min')
+    c.exposure_max = get_toml('device', 'exposure_max')
+    c.file_timeout = get_toml('device', 'file_timeout')
+    c.focus_arm_mode = get_toml('focuser', 'arm_mode')
+    c.focus_drive_mode = get_toml('focuser', 'drive_mode')
+    c.focus_arm_on_connect = get_toml('focuser', 'arm_on_connect')
+    c.log_level = logging.getLevelName(get_toml('logging', 'log_level'))  # Not documented but works (!!!!)
+    c.log_to_stdout = get_toml('logging', 'log_to_stdout')
+    c.max_size_mb = get_toml('logging', 'max_size_mb')
+    c.num_keep_logs = get_toml('logging', 'num_keep_logs')
+
+
+load()
