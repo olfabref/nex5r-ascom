@@ -1,6 +1,7 @@
 """Test bench: the Alpaca Server runs as a real process (app.py --config ...) against a fake camera-app,
 and the tests talk to it through the Alpaca API, as N.I.N.A. does."""
 import json
+import os
 import signal
 import socket
 import subprocess
@@ -15,6 +16,10 @@ import pytest
 from fake_camera_app import FakeCameraApp
 
 SERVER_DIR = Path(__file__).resolve().parent.parent
+# Where the Alpaca Server looks for the latest Release (release.py). Tests never reach api.github.com:
+# by default a closed local port ("cannot check"); tests/fake_github.py serves a mocked one.
+RELEASES_URL_ENV = 'NEX5R_RELEASES_URL'
+NO_GITHUB = 'http://127.0.0.1:9/repos/olfabref/nex5r-ascom/releases/latest'
 
 
 def free_port() -> int:
@@ -100,6 +105,8 @@ class AlpacaServer:
     """app.py --config CONFIG, or app.py alone (configuration from the user folder) when use_option is False."""
 
     def __init__(self, config: Path, cwd: Path, use_option: bool = True, env: dict | None = None):
+        env = dict(os.environ if env is None else env)
+        env.setdefault(RELEASES_URL_ENV, NO_GITHUB)
         self.port = int(next(line.split('=')[1] for line in config.read_text().splitlines()
                              if line.startswith('port')))
         option = ['--config', str(config)] if use_option else []
@@ -142,12 +149,14 @@ def camera_app():
 
 @pytest.fixture
 def start_server(tmp_path):
-    """start_server(camera_url, **config) -> Alpaca client of a server started with --config."""
+    """start_server(camera_url, releases_url=None, **config) -> Alpaca client of a server started with
+    --config; releases_url: where it looks for the latest Release (default: nowhere, see NO_GITHUB)."""
     servers = []
 
-    def start(camera_url: str, **kw) -> Alpaca:
+    def start(camera_url: str, releases_url: str | None = None, **kw) -> Alpaca:
         config = write_config(tmp_path / 'test-config.toml', camera_url, free_port(), **kw)
-        servers.append(AlpacaServer(config, tmp_path))
+        env = {**os.environ, RELEASES_URL_ENV: releases_url} if releases_url else None
+        servers.append(AlpacaServer(config, tmp_path, env=env))
         return servers[-1].client
 
     yield start

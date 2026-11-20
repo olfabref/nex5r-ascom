@@ -7,6 +7,8 @@ per section (see SECTIONS), plus the derived `version_mismatch`:
    "camera_app": {"reachable": true, "version": "0.1.0", "error": null},
    "camera":     {"connected": false, "state": "IDLE", "exposing": false},
    "focuser":    {"connected": false, "armed": false, "position": 16, "moving": false},
+   "release":    {"state": "available", "update_available": true, "current": "0.1.0", "latest": "0.2.0",
+                  "url": "https://github.com/.../releases/tag/v0.2.0", "checked_at": "...", "error": null},
    "version_mismatch": false}
 
 To show something new, add a section function to SECTIONS (and a renderer to dashboard.html); to act
@@ -21,6 +23,7 @@ from falcon import App, Request, Response
 
 import camera
 import focuser
+import release
 from cameradevice import CameraState
 from config import Config
 from nex5r import CameraError, Nex5r
@@ -76,12 +79,18 @@ def _focuser() -> dict:
     return {'connected': dev.connected, 'armed': dev.armed, 'position': dev.position, 'moving': dev.is_moving}
 
 
+def _release() -> dict:
+    """New Release detection (release.py): state is checking, available, up_to_date or cannot_check."""
+    return release.checker.state()
+
+
 # Section name -> function returning its JSON object. Order is the page's order.
 SECTIONS = {
     'server': _server,
     'camera_app': _camera_app,
     'camera': _camera,
     'focuser': _focuser,
+    'release': _release,
 }
 
 
@@ -109,7 +118,8 @@ class status_route:
 
 
 def add_routes(app: App):
-    """The Dashboard's routes; call after the Devices are started (camera.dev, focuser.dev)."""
+    """The Dashboard's routes; call after the Devices are started (camera.dev, focuser.dev) and the
+    release check (release.start())."""
     global _probe
     _probe = CameraAppProbe(Config.camera_url)
     app.add_route('/', page())
