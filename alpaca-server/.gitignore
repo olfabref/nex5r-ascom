@@ -3,3 +3,4 @@ __pycache__/
 *.log
 *.log.*
 nina-run.out
+.pytest_cache/

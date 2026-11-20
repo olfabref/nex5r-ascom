@@ -16,6 +16,7 @@ Based on the official ASCOM [AlpycaDevice](https://github.com/ASCOMInitiative/Al
 - `responders.py`: the responder factories both devices share.
 - `nex5r.py`: HTTP client for camera-app (`/status`, `/shutter`, `/iso`, `/capture?ms=`, `/files`, `/dcim/`, `/focus`, `/focusarm`).
 - `config.toml`: the camera's address and the sensor geometry.
+- `tests/`: the test bench (see Tests).
 
 ## Behaviour
 
@@ -44,9 +45,19 @@ Focuser:
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python app.py            # log in alpyca.log (and stdout)
 .venv/bin/python smoke_test.py 2   # one 2 s exposure through the Alpaca API
+.venv/bin/python app.py --config other.toml    # another configuration file instead of ./config.toml
 ```
 
 NEX5R Dev must be running on the camera (it turns Wi-Fi on and joins the network itself).
+
+## Tests
+
+```
+.venv/bin/pip install -r requirements-dev.txt
+.venv/bin/pytest
+```
+
+No Camera needed: each test starts the Alpaca Server (`app.py --config`) against a fake camera-app (`tests/fake_camera_app.py`, the routes of `nex5r.py` with camera-app's plain-text replies) and goes through the Alpaca API, as N.I.N.A. does. The fake serves `tests/data/sample.ARW`, a 64 x 40 DNG that rawpy decodes like an ARW (a real one is 16 MB), written by `tests/make_sample_arw.py`. The end-to-end test on the Camera stays manual: `smoke_test.py`.
 
 ## N.I.N.A. autofocus
 
