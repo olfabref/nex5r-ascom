@@ -45,11 +45,14 @@
 # nex5r-ascom: the configuration can be loaded from an explicit path (load(), app.py --config);
 #               without one, config.toml in the user folder, created from config-template.toml
 #               on first launch so that a reinstall or an Update does not overwrite it (ADR 0002).
+#               save_device() writes camera_url / sensor_type back to that file (Dashboard settings).
 #
 import os
 import shutil
 import sys
+import tempfile
 import toml
+import tomlkit
 import logging
 from pathlib import Path
 
@@ -58,6 +61,9 @@ OVERRIDE_PATH = '/alpyca/config.toml'
 
 _dict = {}
 _dict2 = {}
+loaded_path: Path | None = None     # the file load() read, where save_device() writes
+
+SENSOR_TYPES = ('color', 'mono')
 
 def get_toml(sect: str, item: str):
     setting = ''
@@ -84,6 +90,7 @@ class Config:
     location: str
     verbose_driver_exceptions: bool
     camera_url: str
+    sensor_type: str                # 'color' or 'mono' (sensor_mono)
     sensor_x: int
     sensor_y: int
     pixel_size_um: float
@@ -127,8 +134,9 @@ def ensure_user_config() -> Path:
 def load(path: str | Path | None = None):
     """(Re)loads :py:class:`Config` from ``path`` (default: the user's config.toml, see
     :py:func:`ensure_user_config`)."""
-    global _dict, _dict2
-    _dict = toml.load(path or ensure_user_config())     # Errors here are fatal.
+    global _dict, _dict2, loaded_path
+    loaded_path = Path(path or ensure_user_config())
+    _dict = toml.load(loaded_path)                      # Errors here are fatal.
     try:
         # ltf - this file, if it exists can override or supplement definitions
         # in the normal config.toml. This facilitates putting the driver in a
@@ -159,7 +167,8 @@ def load(path: str | Path | None = None):
     c.max_adu = get_toml('device', 'max_adu')
     c.bayer_offset_x = get_toml('device', 'bayer_offset_x')
     c.bayer_offset_y = get_toml('device', 'bayer_offset_y')
-    c.sensor_mono = get_toml('device', 'sensor_type') == 'mono'
+    c.sensor_type = get_toml('device', 'sensor_type')
+    c.sensor_mono = c.sensor_type == 'mono'
     c.exposure_min = get_toml('device', 'exposure_min')
     c.exposure_max = get_toml('device', 'exposure_max')
     c.file_timeout = get_toml('device', 'file_timeout')
@@ -170,3 +179,34 @@ def load(path: str | Path | None = None):
     c.log_to_stdout = get_toml('logging', 'log_to_stdout')
     c.max_size_mb = get_toml('logging', 'max_size_mb')
     c.num_keep_logs = get_toml('logging', 'num_keep_logs')
+
+
+def save_device(**values):
+    """Writes ``values`` (keys of the [device] table, e.g. camera_url, sensor_type) to the file
+    :py:func:`load` read, keeping everything else in it as it is (comments, order, other keys), then
+    applies them to :py:class:`Config`. The file is replaced atomically: a crash leaves the old one."""
+    path = loaded_path
+    with open(path, encoding='utf-8', newline='') as f:
+        doc = tomlkit.parse(f.read())
+    device = doc.setdefault('device', tomlkit.table())
+    for key, value in values.items():
+        old = device.get(key)
+        if isinstance(old, tomlkit.items.String) and old.type == tomlkit.items.StringType.SLL \
+                and isinstance(value, str) and "'" not in value and '\n' not in value:
+            device[key] = tomlkit.items.String.from_raw(value, old.type)    # 'literal' as before
+        else:
+            device[key] = value         # keeps the line's comment; a missing key is appended
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=path.name, suffix='.tmp')
+    try:
+        with os.fdopen(fd, 'w', encoding='utf-8', newline='') as f:
+            f.write(tomlkit.dumps(doc))
+        os.replace(tmp, path)
+    except BaseException:
+        os.unlink(tmp)
+        raise
+    _dict.setdefault('device', {}).update(values)
+    if 'camera_url' in values:
+        Config.camera_url = get_toml('device', 'camera_url')
+    if 'sensor_type' in values:
+        Config.sensor_type = get_toml('device', 'sensor_type')
+        Config.sensor_mono = Config.sensor_type == 'mono'
