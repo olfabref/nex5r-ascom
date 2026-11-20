@@ -43,13 +43,17 @@
 #               write-Connected behavior.
 #
 # nex5r-ascom: the configuration can be loaded from an explicit path (load(), app.py --config);
-#               without one, config.toml next to the script as before.
+#               without one, config.toml in the user folder, created from config-template.toml
+#               on first launch so that a reinstall or an Update does not overwrite it (ADR 0002).
 #
+import os
+import shutil
 import sys
 import toml
 import logging
+from pathlib import Path
 
-DEFAULT_PATH = f'{sys.path[0]}/config.toml'
+TEMPLATE_PATH = Path(__file__).resolve().parent / 'config-template.toml'
 OVERRIDE_PATH = '/alpyca/config.toml'
 
 _dict = {}
@@ -71,7 +75,7 @@ class Config:
     """Device configuration. For docker based installation specific
         configuration, will first look for ``/alpyca/config.toml``
         and if exists, any setting there will override those in
-        ``./config.toml`` (the default settings file), or in the
+        the user's ``config.toml`` (the default settings file), or in the
         file given to :py:func:`load`.
     """
     # Set by load(), see there.
@@ -99,10 +103,32 @@ class Config:
     num_keep_logs: int
 
 
-def load(path: str | None = None):
-    """(Re)loads :py:class:`Config` from ``path`` (default: config.toml next to the script)."""
+def user_config_path() -> Path:
+    """config.toml in the user folder: %APPDATA% on Windows, ~/Library/Application Support on Mac,
+    $XDG_CONFIG_HOME (default ~/.config) elsewhere."""
+    if sys.platform == 'win32':
+        base = Path(os.environ['APPDATA'])
+    elif sys.platform == 'darwin':
+        base = Path.home() / 'Library' / 'Application Support'
+    else:
+        base = Path(os.environ.get('XDG_CONFIG_HOME') or Path.home() / '.config')
+    return base / 'nex5r-ascom' / 'config.toml'
+
+
+def ensure_user_config() -> Path:
+    """The user's config.toml, copied from the template first if it does not exist yet."""
+    path = user_config_path()
+    if not path.exists():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(TEMPLATE_PATH, path)
+    return path
+
+
+def load(path: str | Path | None = None):
+    """(Re)loads :py:class:`Config` from ``path`` (default: the user's config.toml, see
+    :py:func:`ensure_user_config`)."""
     global _dict, _dict2
-    _dict = toml.load(path or DEFAULT_PATH)     # Errors here are fatal.
+    _dict = toml.load(path or ensure_user_config())     # Errors here are fatal.
     try:
         # ltf - this file, if it exists can override or supplement definitions
         # in the normal config.toml. This facilitates putting the driver in a
@@ -144,6 +170,3 @@ def load(path: str | None = None):
     c.log_to_stdout = get_toml('logging', 'log_to_stdout')
     c.max_size_mb = get_toml('logging', 'max_size_mb')
     c.num_keep_logs = get_toml('logging', 'num_keep_logs')
-
-
-load()

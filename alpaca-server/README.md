@@ -15,8 +15,18 @@ Based on the official ASCOM [AlpycaDevice](https://github.com/ASCOMInitiative/Al
 - `focuserdevice.py`: positions, arming, one move at a time on a worker thread.
 - `responders.py`: the responder factories both devices share.
 - `nex5r.py`: HTTP client for camera-app (`/status`, `/shutter`, `/iso`, `/capture?ms=`, `/files`, `/dcim/`, `/focus`, `/focusarm`).
-- `config.toml`: the camera's address and the sensor geometry.
+- `config-template.toml`: the template of the configuration (see Configuration).
 - `tests/`: the test bench (see Tests).
+
+## Configuration
+
+`config.toml` (the camera's address, the sensor geometry, the focuser arming, logging) lives in the user folder, not next to the code, so that a reinstall or an Update does not overwrite it (ADR 0002):
+
+- Windows: `%APPDATA%\nex5r-ascom\config.toml`
+- Mac: `~/Library/Application Support/nex5r-ascom/config.toml`
+- Linux: `$XDG_CONFIG_HOME/nex5r-ascom/config.toml` (default `~/.config/...`)
+
+On first launch the server creates it as a copy of `config-template.toml`; after that it always reads it from there and never rewrites it, so edit it by hand and restart the server. `app.py --help` prints the path. To start again from the template, delete it. An older `alpaca-server/config.toml` next to the code is no longer read: copy it to the user folder.
 
 ## Behaviour
 
@@ -45,7 +55,7 @@ Focuser:
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python app.py            # log in alpyca.log (and stdout)
 .venv/bin/python smoke_test.py 2   # one 2 s exposure through the Alpaca API
-.venv/bin/python app.py --config other.toml    # another configuration file instead of ./config.toml
+.venv/bin/python app.py --config other.toml    # another configuration file instead of the user's config.toml
 ```
 
 NEX5R Dev must be running on the camera (it turns Wi-Fi on and joins the network itself).
@@ -57,7 +67,7 @@ NEX5R Dev must be running on the camera (it turns Wi-Fi on and joins the network
 .venv/bin/pytest
 ```
 
-No Camera needed: each test starts the Alpaca Server (`app.py --config`) against a fake camera-app (`tests/fake_camera_app.py`, the routes of `nex5r.py` with camera-app's plain-text replies) and goes through the Alpaca API, as N.I.N.A. does. The fake serves `tests/data/sample.ARW`, a 64 x 40 DNG that rawpy decodes like an ARW (a real one is 16 MB), written by `tests/make_sample_arw.py`. The end-to-end test on the Camera stays manual: `smoke_test.py`.
+No Camera needed: each test starts the Alpaca Server (`app.py --config`, or `app.py` alone with a temporary user folder) against a fake camera-app (`tests/fake_camera_app.py`, the routes of `nex5r.py` with camera-app's plain-text replies) and goes through the Alpaca API, as N.I.N.A. does. The fake serves `tests/data/sample.ARW`, a 64 x 40 DNG that rawpy decodes like an ARW (a real one is 16 MB), written by `tests/make_sample_arw.py`. The end-to-end test on the Camera stays manual: `smoke_test.py`.
 
 ## N.I.N.A. autofocus
 

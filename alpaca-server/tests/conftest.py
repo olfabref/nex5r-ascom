@@ -95,11 +95,14 @@ class Alpaca:
 
 
 class AlpacaServer:
-    def __init__(self, config: Path, cwd: Path):
+    """app.py --config CONFIG, or app.py alone (configuration from the user folder) when use_option is False."""
+
+    def __init__(self, config: Path, cwd: Path, use_option: bool = True, env: dict | None = None):
         self.port = int(next(line.split('=')[1] for line in config.read_text().splitlines()
                              if line.startswith('port')))
-        self.proc = subprocess.Popen([sys.executable, str(SERVER_DIR / 'app.py'), '--config', str(config)],
-                                     cwd=cwd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        option = ['--config', str(config)] if use_option else []
+        self.proc = subprocess.Popen([sys.executable, str(SERVER_DIR / 'app.py'), *option],
+                                     cwd=cwd, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
         self.client = Alpaca(f'http://127.0.0.1:{self.port}')
         deadline = time.monotonic() + 15
         while time.monotonic() < deadline:
