@@ -14,6 +14,7 @@ from config import Config
 from exceptions import ActionNotImplementedException, InvalidOperationException, InvalidValueException
 from focuserdevice import FocuserDevice
 from responders import Fail, Responders, const, not_impl, to_int
+from version import __version__
 from shr import StateValue, get_request_field, to_bool
 
 logger: Logger = None
@@ -23,7 +24,7 @@ maxdev = 0                      # Single instance
 
 class FocuserMetadata:
     Name = 'Sony NEX-5R lens'
-    Version = '0.1'
+    Version = __version__
     Description = 'Focus-by-wire lens on the Sony NEX-5R (camera-app shiftFocusPosition, 33 positions)'
     DeviceType = 'Focuser'
     DeviceID = 'c2a6e3f4-8d51-4b0b-9f3e-7a1d2b6c4e85'

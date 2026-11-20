@@ -15,6 +15,7 @@ Based on the official ASCOM [AlpycaDevice](https://github.com/ASCOMInitiative/Al
 - `focuserdevice.py`: positions, arming, one move at a time on a worker thread.
 - `responders.py`: the responder factories both devices share.
 - `nex5r.py`: HTTP client for camera-app (`/status`, `/shutter`, `/iso`, `/capture?ms=`, `/files`, `/dcim/`, `/focus`, `/focusarm`).
+- `version.py`: the Version (ADR 0001), written by release-please. Both Devices return it as `DriverVersion`, the management description as `Version`, and the startup log line names it.
 - `config-template.toml`: the template of the configuration (see Configuration).
 - `tests/`: the test bench (see Tests).
 

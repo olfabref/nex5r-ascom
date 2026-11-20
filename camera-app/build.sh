@@ -30,10 +30,13 @@ find build/classes -name '*.class' > build/classes.txt
   --output build/dex @build/classes.txt "$FRAMEWORK_JAR"
 
 echo "4/5 Package"
-VERSION_CODE=$(git rev-list --count HEAD 2>/dev/null || echo 1)
-VERSION_NAME=$(git describe --always --dirty 2>/dev/null || echo dev)
+# The Version is the manifest's versionName (written by release-please); versionCode is derived
+# from it (X.Y.Z -> X*10000 + Y*100 + Z, at least 1), so a newer Version always has a higher code.
+VERSION_NAME=$(sed -n 's/.*android:versionName="\([0-9]*\.[0-9]*\.[0-9]*\)".*/\1/p' app/AndroidManifest.xml)
+[ -n "$VERSION_NAME" ] || { echo "No X.Y.Z android:versionName in app/AndroidManifest.xml" >&2; exit 1; }
+VERSION_CODE=$(echo "$VERSION_NAME" | awk -F. '{ c = $1 * 10000 + $2 * 100 + $3; print (c < 1 ? 1 : c) }')
 "$BT/aapt" package -f -M app/AndroidManifest.xml -S app/res -I "$ANDROID_JAR" \
-  --version-code "$VERSION_CODE" --version-name "$VERSION_NAME" -F build/unsigned.apk
+  --version-code "$VERSION_CODE" -F build/unsigned.apk
 (cd build/dex && zip -q ../unsigned.apk classes.dex)
 "$BT/zipalign" -f 4 build/unsigned.apk build/aligned.apk
 
@@ -42,4 +45,4 @@ echo "5/5 Sign"
 "$BT/apksigner" sign --ks "$KEYSTORE" --ks-pass pass:android --min-sdk-version 10 \
   --v2-signing-enabled false --v3-signing-enabled false --out build/nex5r.apk build/aligned.apk
 
-echo "Built build/nex5r.apk ($VERSION_NAME)"
+echo "Built build/nex5r.apk (Version $VERSION_NAME, versionCode $VERSION_CODE)"

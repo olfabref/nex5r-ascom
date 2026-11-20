@@ -20,6 +20,7 @@ from config import Config
 from exceptions import InvalidOperationException, InvalidValueException, ValueNotSetException
 from responders import Fail, Responders, const, not_impl, to_int
 from shr import PropertyResponse, StateValue, get_request_field, getNextTransId, to_bool
+from version import __version__
 
 logger: Logger = None
 
@@ -28,7 +29,7 @@ maxdev = 0                      # Single instance
 
 class CameraMetadata:
     Name = 'Sony NEX-5R'
-    Version = '0.1'
+    Version = __version__
     Description = 'Sony NEX-5R over Wi-Fi (camera-app on the camera, timed Bulb, ARW Bayer data)'
     DeviceType = 'Camera'
     DeviceID = '6b1f3c1e-2a7d-4f4e-9a55-5d1c0e7b9a42'
