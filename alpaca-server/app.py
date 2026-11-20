@@ -296,7 +296,7 @@ def main(argv: list[str] | None = None):
     falc_app.add_route(f'/setup/v{API_VERSION}/camera/{{devnum}}/setup', setup.devsetup())
     falc_app.add_route(f'/setup/v{API_VERSION}/focuser/{{devnum}}/setup', setup.devsetup())
     # nex5r-ascom: the Dashboard on the root page
-    dashboard.add_routes(falc_app)
+    dashboard.add_routes(falc_app, logger)
 
     #
     # Install the unhandled exception processor. See above,

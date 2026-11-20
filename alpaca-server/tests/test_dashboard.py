@@ -2,6 +2,7 @@
 import json
 import socket
 import time
+import urllib.error
 import urllib.request
 
 import pytest
@@ -103,3 +104,84 @@ def test_page_opens_from_the_local_network_with_the_default_address(camera_app, 
     alpaca = start_server(camera_app.url, ip_address='')       # config-template.toml: any address
     with urllib.request.urlopen(f'http://{ip}:{alpaca.base.rsplit(":", 1)[1]}/', timeout=10) as r:
         assert b'Dashboard' in r.read()
+
+
+def action(alpaca, name: str, **body) -> tuple[int, dict]:
+    """POST /dashboard/action/<name> with a JSON body, as the page does: (HTTP status, JSON reply)."""
+    req = urllib.request.Request(alpaca.base + '/dashboard/action/' + name, method='POST',
+                                 data=json.dumps(body).encode(), headers={'Content-Type': 'application/json'})
+    try:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return r.status, json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        return e.code, json.loads(e.read())
+
+
+def test_arm_focuser_without_confirmation_is_refused_and_does_nothing(alpaca, camera_app):
+    code, reply = action(alpaca, 'arm_focuser')
+    assert code == 400
+    assert reply['ok'] is False and 'confirm' in reply['message']
+    assert camera_app.camera.focus_armed is False
+    assert status(alpaca)['focuser']['armed'] is False
+
+
+def test_confirmed_arm_focuser_arms_the_connected_focuser_at_position_16(alpaca, camera_app):
+    # As after refocusing by hand: Connected (armed at Connect), then moved away from 16 by N.I.N.A.
+    assert alpaca.put('focuser', 'connected', Connected='true')['ErrorNumber'] == 0
+    assert alpaca.put('focuser', 'move', Position=30)['ErrorNumber'] == 0
+    deadline = time.monotonic() + 5
+    while alpaca.get('focuser', 'ismoving') or alpaca.get('focuser', 'position') != 30:
+        assert time.monotonic() < deadline, 'move not done'
+        time.sleep(0.05)
+    camera_app.camera.focus_last = '-'
+
+    code, reply = action(alpaca, 'arm_focuser', confirmed=True)
+    assert code == 200, reply
+    assert reply == {'ok': True, 'message': 'Focuser armed at position 16.'}
+    assert camera_app.camera.focus_last.startswith('focus-mode -> auto')   # arm_mode manual, then drive_mode
+    assert status(alpaca)['focuser'] == {'connected': True, 'armed': True, 'position': 16, 'moving': False}
+    assert alpaca.get('focuser', 'position') == 16
+
+
+def test_arm_focuser_works_when_the_focuser_is_not_connected(alpaca, camera_app):
+    code, reply = action(alpaca, 'arm_focuser', confirmed=True)
+    assert code == 200, reply
+    assert camera_app.camera.focus_armed is True
+    assert status(alpaca)['focuser'] == {'connected': False, 'armed': True, 'position': 16, 'moving': False}
+
+
+def test_arm_focuser_is_refused_during_an_exposure(alpaca, camera_app):
+    alpaca.put('camera', 'connected', Connected='true')
+    body = alpaca.put('camera', 'startexposure', Duration=3.0, Light='true')
+    assert body['ErrorNumber'] == 0, body['ErrorMessage']
+
+    code, reply = action(alpaca, 'arm_focuser', confirmed=True)
+    assert code == 409
+    assert reply['ok'] is False and 'exposure is in progress' in reply['message']
+    assert camera_app.camera.focus_armed is False
+
+
+def test_arm_focuser_is_refused_when_camera_app_is_not_reachable(alpaca, camera_app):
+    camera_app.stop()
+    code, reply = action(alpaca, 'arm_focuser', confirmed=True)
+    assert code == 409
+    assert reply['ok'] is False and reply['message'].startswith('Cannot arm the Focuser')
+
+
+def test_actions_need_a_json_body_and_a_known_name(alpaca):
+    assert action(alpaca, 'no_such_action', confirmed=True)[0] == 404
+    # A plain HTML form (another site's page included) cannot trigger an action.
+    req = urllib.request.Request(alpaca.base + '/dashboard/action/arm_focuser', method='POST',
+                                 data=b'confirmed=true',
+                                 headers={'Content-Type': 'application/x-www-form-urlencoded'})
+    with pytest.raises(urllib.error.HTTPError) as e:
+        urllib.request.urlopen(req, timeout=10)
+    assert e.value.code == 415
+    assert status(alpaca)['focuser']['armed'] is False
+
+
+def test_page_asks_for_a_confirmation_before_arming(alpaca):
+    page = get(alpaca, '/')[1].decode('utf-8')
+    assert "fetch('dashboard/action/' + name" in page
+    assert 'confirm(' in page and 'confirmed: true' in page
+    assert "button('arm_focuser'" in page
