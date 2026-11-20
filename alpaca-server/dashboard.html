@@ -26,12 +26,18 @@
              padding: 8px 14px; margin-bottom: 10px; }
   a { color: inherit; }
   #updated { color: var(--muted); font-size: 13px; }
+  button { font: inherit; padding: 4px 12px; border-radius: 6px; border: 1px solid var(--line);
+           background: var(--bg); color: var(--fg); cursor: pointer; }
+  button:disabled { opacity: 0.5; cursor: default; }
+  .result { border: 1px solid var(--line); border-radius: 8px; padding: 8px 14px; margin-bottom: 10px; }
+  .result.bad { border-color: var(--bad); }
 </style>
 </head>
 <body>
 <main>
   <h1>nex5r-ascom Dashboard</h1>
   <div id="warnings"></div>
+  <div id="result" role="status"></div>
   <div id="sections"></div>
   <p id="updated">Loading…</p>
 </main>
@@ -55,6 +61,9 @@ const RENDERERS = {
     ['Connected', yes(s.connected, 'Connected', 'not Connected')],
     ['Armed', s.armed ? 'yes' : 'no'],
     ['Position', esc(s.position) + ' / 32' + (s.moving ? ' (moving)' : '')],
+    ['', button('arm_focuser', 'Re-arm',
+      'Re-arm the Focuser? The lens stays where it is focused now and becomes position 16, so the ' +
+      'positions N.I.N.A. knows will no longer match: run its autofocus again afterwards.')],
   ]],
   release: s => ['Release', [['Latest', RELEASE_STATES[s.state] ? RELEASE_STATES[s.state](s) : esc(s.state)]]],
 };
@@ -75,6 +84,47 @@ const WARNINGS = [
     'Reinstall the camera-app APK of the same Release.',
   st => st.release && st.release.update_available && `New Release: ${newRelease(st.release)}.`,
 ];
+
+// Actions (dashboard.ACTIONS): button(name, label, confirmText) goes in a renderer's row. A click asks
+// confirmText (when given) with confirm(), then POSTs to dashboard/action/<name>; the reply's message
+// (done, or why it was refused) shows in #result until the next action. Buttons are redrawn on every
+// poll, so clicks are caught on the document, and a running action keeps its button disabled.
+const running = new Set();
+const button = (name, label, confirmText = '') =>
+  `<button type="button" data-action="${esc(name)}" data-confirm="${esc(confirmText)}"` +
+  `${running.has(name) ? ' disabled' : ''}>${esc(label)}</button>`;
+
+function showResult(ok, message) {
+  const el = document.getElementById('result');
+  el.className = 'result ' + (ok ? 'ok' : 'bad');
+  el.textContent = message;
+}
+
+async function runAction(name, confirmText) {
+  if (running.has(name)) return;
+  if (confirmText && !confirm(confirmText)) return;
+  running.add(name);
+  poll();                                           // redraw with the button disabled
+  showResult(true, 'Working…');
+  try {
+    const r = await fetch('dashboard/action/' + name, {
+      method: 'POST', cache: 'no-store', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({confirmed: true}),      // the server refuses a confirm Action without it
+    });
+    const reply = await r.json().catch(() => ({ok: false, message: 'HTTP ' + r.status}));
+    showResult(reply.ok, reply.message);
+  } catch (e) {
+    showResult(false, 'Alpaca Server not answering (' + e.message + ')');
+  } finally {
+    running.delete(name);
+    poll();
+  }
+}
+
+document.addEventListener('click', e => {
+  const b = e.target.closest('button[data-action]');
+  if (b && !b.disabled) runAction(b.dataset.action, b.dataset.confirm);
+});
 
 function render(st) {
   document.getElementById('warnings').innerHTML =
