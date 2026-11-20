@@ -11,14 +11,29 @@ per section (see SECTIONS), plus the derived `version_mismatch`:
                   "url": "https://github.com/.../releases/tag/v0.2.0", "checked_at": "...", "error": null},
    "version_mismatch": false}
 
-To show something new, add a section function to SECTIONS (and a renderer to dashboard.html); to act
-on something (Update, Arming...), add a route in add_routes.
+To show something new, add a section function to SECTIONS (and a renderer to dashboard.html).
+
+To act on something (Arming, Update...), add an Action to ACTIONS (and a button to dashboard.html). The
+page POSTs to /dashboard/action/<name> with a JSON body; the reply is {"ok": bool, "message": str}, and
+the page shows the message:
+
+  200  the Action ran; the message says what it did
+  400  a confirm Action without "confirmed": true in the body, or a body that is not a JSON object
+  404  no such Action
+  409  refused: the Action cannot run now (its function raised Refused('why'))
+  415  not application/json, so a plain form on another site cannot trigger an Action
+
+The confirmation is asked on the page and required again here.
 """
 import json
 import threading
 import time
+from dataclasses import dataclass
+from logging import Logger
 from pathlib import Path
+from typing import Callable
 
+import falcon
 from falcon import App, Request, Response
 
 import camera
@@ -33,6 +48,8 @@ from version import __version__
 PAGE = Path(__file__).with_name('dashboard.html')
 
 EXPOSURE_STATES = (CameraState.WAITING, CameraState.EXPOSING, CameraState.READING, CameraState.DOWNLOAD)
+
+logger: Logger = None
 
 
 class CameraAppProbe:
@@ -69,9 +86,13 @@ def _camera_app() -> dict:
     return _probe.state()
 
 
+def _exposure_in_progress() -> bool:
+    return camera.dev.state in EXPOSURE_STATES
+
+
 def _camera() -> dict:
     dev = camera.dev
-    return {'connected': dev.connected, 'state': dev.state.name, 'exposing': dev.state in EXPOSURE_STATES}
+    return {'connected': dev.connected, 'state': dev.state.name, 'exposing': _exposure_in_progress()}
 
 
 def _focuser() -> dict:
@@ -102,6 +123,68 @@ def status() -> dict:
     return out
 
 
+class Refused(Exception):
+    """An Action that cannot run now; its message is the refusal shown on the page."""
+
+
+@dataclass(frozen=True)
+class Action:
+    run: Callable[[dict], str]      # the request's JSON body -> message for the page; raises Refused
+    confirm: bool = False           # True: refused unless the body has "confirmed": true
+
+
+def _arm_focuser(body: dict) -> str:
+    """Arming with the config arm_mode and drive_mode, allowed even when the Focuser is Connected:
+    the positions N.I.N.A. knows no longer match afterwards (hence the confirmation)."""
+    if _exposure_in_progress():
+        raise Refused('An exposure is in progress: arm the Focuser once it is over.')
+    try:
+        focuser.dev.arm()
+    except (RuntimeError, CameraError) as e:
+        raise Refused(f'Cannot arm the Focuser: {e}.')
+    if not focuser.dev.armed:
+        raise Refused('The camera did not arm the Focuser: try again.')
+    return f'Focuser armed at position {focuser.dev.position}.'
+
+
+# Action name (last part of the URL, data-action of the page's button) -> Action.
+ACTIONS = {
+    'arm_focuser': Action(_arm_focuser, confirm=True),
+}
+
+
+def _reply(resp: Response, code: str, ok: bool, message: str):
+    resp.status = code
+    resp.content_type = 'application/json'
+    resp.cache_control = ['no-store']
+    resp.text = json.dumps({'ok': ok, 'message': message})
+
+
+class action_route:
+    def on_post(self, req: Request, resp: Response, name: str):
+        log_request(req)
+        act = ACTIONS.get(name)
+        if act is None:
+            return _reply(resp, falcon.HTTP_404, False, f'Unknown action {name!r}.')
+        if not (req.content_type or '').startswith('application/json'):
+            return _reply(resp, falcon.HTTP_415, False, 'The body must be application/json.')
+        try:
+            body = req.get_media(default_when_empty={})
+        except falcon.HTTPError:
+            body = None
+        if not isinstance(body, dict):
+            return _reply(resp, falcon.HTTP_400, False, 'The body must be a JSON object.')
+        if act.confirm and body.get('confirmed') is not True:
+            return _reply(resp, falcon.HTTP_400, False, 'This action needs a confirmation ("confirmed": true).')
+        try:
+            message = act.run(body)
+        except Refused as e:
+            logger.warning(f'[dashboard] {name} refused: {e}')
+            return _reply(resp, falcon.HTTP_409, False, str(e))
+        logger.info(f'[dashboard] {name}: {message}')
+        _reply(resp, falcon.HTTP_200, True, message)
+
+
 class page:
     def on_get(self, req: Request, resp: Response):
         log_request(req)
@@ -117,10 +200,12 @@ class status_route:
         resp.text = json.dumps(status())
 
 
-def add_routes(app: App):
+def add_routes(app: App, lgr: Logger):
     """The Dashboard's routes; call after the Devices are started (camera.dev, focuser.dev) and the
     release check (release.start())."""
-    global _probe
+    global _probe, logger
+    logger = lgr
     _probe = CameraAppProbe(Config.camera_url)
     app.add_route('/', page())
     app.add_route('/dashboard/status', status_route())
+    app.add_route('/dashboard/action/{name}', action_route())

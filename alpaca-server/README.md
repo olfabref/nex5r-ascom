@@ -24,9 +24,13 @@ Based on the official ASCOM [AlpycaDevice](https://github.com/ASCOMInitiative/Al
 
 ## Dashboard
 
-Open `http://<server address>:11111/` from any machine on the local network (with the default `ip_address = ''` the server listens on every address). The read-only page shows whether camera-app is Reachable and its Version, whether the Camera is Connected and exposing, whether the Focuser is Connected and armed and its position (0..32), and the Alpaca Server's Version, with a warning when the two Versions differ (expected after an Update until the APK is reinstalled, ADR 0001).
+Open `http://<server address>:11111/` from any machine on the local network (with the default `ip_address = ''` the server listens on every address). The page shows whether camera-app is Reachable and its Version, whether the Camera is Connected and exposing, whether the Focuser is Connected and armed and its position (0..32), and the Alpaca Server's Version, with a warning when the two Versions differ (expected after an Update until the APK is reinstalled, ADR 0001).
 
 The page polls `GET /dashboard/status` (JSON, one key per section) every 2 s. That route asks camera-app for `/status` at most once a second, with a 1.5 s timeout, so a stopped camera-app shows as not Reachable within 2 to 4 s.
+
+**Re-arm** (Focuser section) runs an Arming, with the `arm_mode` and `drive_mode` of `config.toml`, for example after refocusing by hand when N.I.N.A.'s autofocus ends at 0 or 32. It asks for a confirmation first: the lens becomes position 16, so the positions N.I.N.A. knows no longer match (run its autofocus again). It works whether or not the Focuser is Connected, and is refused while an exposure is in progress or when camera-app does not answer; the page shows the result or the refusal above the sections.
+
+Actions are `POST /dashboard/action/<name>` with a JSON body (`{"confirmed": true}` for an action that needs a confirmation), answering `{"ok": ..., "message": ...}`: 200 done, 409 refused now, 400 no confirmation, 404 unknown action, 415 not JSON (so a form on another site cannot trigger one).
 
 The Release section tells whether a newer Release exists. At startup, then every 6 h, the server asks the GitHub API for the latest Release (`releases/latest`: drafts and prereleases are never the latest) in a background thread, and compares its Version with its own: "Version X.Y.Z available" (also as a banner, with a link to the Release notes), "up to date" (same Version, an older one, or no Release yet), or "cannot check" (no network or a GitHub error; the server carries on normally and tries again 6 h later). Nothing is installed automatically. The environment variable `NEX5R_RELEASES_URL` replaces the GitHub API URL (the tests point it to a fake GitHub).
 
