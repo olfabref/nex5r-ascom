@@ -105,6 +105,24 @@ def test_pull_requests_build_and_check_the_installer_on_windows():
     assert installer_jobs('ci.yml')
 
 
+def test_pull_requests_check_the_update_between_two_fake_releases_on_windows():
+    # Two installers of the same code (the second with a newer Version), served by a local fake GitHub:
+    # never a real Release.
+    [name] = installer_jobs('ci.yml')
+    script = run_scripts(workflow('ci.yml')['jobs'][name])
+    assert 'installer/check_update.py' in script
+    assert script.count('installer/build.ps1') == 2
+    assert 'gh release' not in script
+    check = read(INSTALLER / 'check_update.py')
+    assert 'FakeGitHub' in check and 'NEX5R_RELEASES_URL' in check
+
+
+def test_the_update_downloads_the_release_asset_and_runs_it_silently():
+    text = read(SERVER / 'update.py')
+    assert f"INSTALLER = '{ASSET}'" in text
+    assert "SILENT = ['/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART']" in text
+
+
 def test_release_attaches_the_checked_installer_with_its_checksum():
     jobs = workflow('release.yml')['jobs']
     [windows] = installer_jobs('release.yml')

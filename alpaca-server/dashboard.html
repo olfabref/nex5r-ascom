@@ -86,7 +86,32 @@ const RENDERERS = {
       'positions N.I.N.A. knows will no longer match: run its autofocus again afterwards.')],
   ]],
   release: s => ['Release', [['Latest', RELEASE_STATES[s.state] ? RELEASE_STATES[s.state](s) : esc(s.state)]]],
+  update: s => ['Update', [
+    ['State', UPDATE_STATES[s.state] ? UPDATE_STATES[s.state](s) : esc(s.state)],
+    // From the sources the button only shows the git command: nothing to confirm.
+    ['', button('update', 'Update', s.installable ?
+      'Update the Alpaca Server to the latest Release? It downloads and checks the installer, then the ' +
+      'server stops, installs and restarts (about a minute). The configuration is kept; camera-app is not updated.' : '')],
+  ]],
 };
+
+// update.state -> what the Update section shows (update.py).
+const UPDATE_STATES = {
+  idle: s => s.installable ? 'none' : `from the sources: <code>${esc(s.command)}</code>`,
+  downloading: s => esc(s.message),
+  installing: s => 'Update in progress…',
+  failed: s => `<span class="bad">${esc(s.message)}</span>`,
+};
+
+// While the installer runs, the server is gone; the next server to answer with no Update running is the
+// new one: reload the page (its dashboard.html may have changed too). A failed Update reloads nothing.
+let updating = false;
+function followUpdate(st) {
+  if (!st.update) return;
+  if (st.update.state === 'downloading' || st.update.state === 'installing') updating = true;
+  else if (updating && st.update.state === 'idle') location.reload();
+  else updating = false;
+}
 
 // release.state -> what the Release section shows. Nothing is installed automatically.
 const newRelease = s => `Version ${esc(s.latest)} available (<a href="${esc(s.url)}" target="_blank" rel="noopener">Release notes</a>)`;
@@ -103,6 +128,8 @@ const WARNINGS = [
     `Version mismatch: Alpaca Server ${esc(st.server.version)}, camera-app ${esc(st.camera_app.version ?? 'unknown')}. ` +
     'Reinstall the camera-app APK of the same Release.',
   st => st.release && st.release.update_available && `New Release: ${newRelease(st.release)}.`,
+  st => st.update && st.update.state === 'installing' &&
+    'Update in progress: the Alpaca Server restarts, this page reloads by itself.',
 ];
 
 // Actions (dashboard.ACTIONS): button(name, label, confirmText) goes in a renderer's row. A click asks
@@ -189,10 +216,13 @@ async function poll() {
   try {
     const r = await fetch('dashboard/status', {cache: 'no-store'});
     if (!r.ok) throw new Error('HTTP ' + r.status);
-    render(await r.json());
+    const st = await r.json();
+    render(st);
+    followUpdate(st);
     updated.textContent = 'Updated ' + new Date().toLocaleTimeString();
   } catch (e) {
-    updated.innerHTML = '<span class="bad">Alpaca Server not answering</span> (' + esc(e.message) + ')';
+    updated.innerHTML = updating ? 'Update in progress: waiting for the Alpaca Server to restart…' :
+      '<span class="bad">Alpaca Server not answering</span> (' + esc(e.message) + ')';
   }
 }
 

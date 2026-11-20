@@ -70,6 +70,7 @@ from enum import IntEnum
 import dashboard
 import release
 import tray
+import update
 import discovery
 import exceptions
 from falcon import Request, Response, App, HTTPInternalServerError
@@ -260,6 +261,7 @@ def main(argv: list[str] | None = None):
     camera.start_camera_device(logger)
     focuser.start_focuser_device(logger)
     release.start(logger)                   # nex5r-ascom: latest Release at startup, then every 6 h
+    update.start(logger)                    # nex5r-ascom: the Update, started from the Dashboard
     discovery.logger = logger
     set_shr_logger(logger)
 
@@ -315,6 +317,10 @@ def main(argv: list[str] | None = None):
     with make_server(Config.ip_address, Config.port, falc_app, server_class=ThreadingWSGIServer,
                      handler_class=LoggingWSGIRequestHandler) as httpd:
         logger.info(f'==STARTUP== nex5r-ascom Alpaca Server Version {__version__}. Serving on {Config.ip_address}:{Config.port}. Time stamps are UTC.')
+        # nex5r-ascom: once the Update has launched the installer, quit as Quit in the tray does
+        # (the server shuts down, the icon goes, main returns); without a tray, serve_forever returns.
+        icon = None
+        update.updater.quit = lambda: icon.quit() if icon and icon.running else httpd.shutdown()
         if args.no_tray:
             # Serve until process is killed
             httpd.serve_forever()

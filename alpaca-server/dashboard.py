@@ -11,6 +11,7 @@ per section (see SECTIONS), plus the derived `version_mismatch`:
                   "locked_by": []},
    "release":    {"state": "available", "update_available": true, "current": "0.1.0", "latest": "0.2.0",
                   "url": "https://github.com/.../releases/tag/v0.2.0", "checked_at": "...", "error": null},
+   "update":     {"installable": true, "state": "idle", "version": null, "message": null, "command": null},
    "version_mismatch": false}
 
 To show something new, add a section function to SECTIONS (and a renderer to dashboard.html).
@@ -43,6 +44,7 @@ import camera
 import config
 import focuser
 import release
+import update
 from cameradevice import CameraState
 from config import SENSOR_TYPES, Config
 from nex5r import CameraError, Nex5r
@@ -120,6 +122,12 @@ def _release() -> dict:
     return release.checker.state()
 
 
+def _update() -> dict:
+    """The Update (update.py): installable (frozen on Windows) or the git command from the sources, and
+    its state: idle, downloading, installing (the server quits and restarts) or failed (message)."""
+    return update.updater.state()
+
+
 # Section name -> function returning its JSON object. Order is the page's order.
 SECTIONS = {
     'server': _server,
@@ -128,6 +136,7 @@ SECTIONS = {
     'focuser': _focuser,
     'settings': _settings,
     'release': _release,
+    'update': _update,
 }
 
 
@@ -161,6 +170,19 @@ def _arm_focuser(body: dict) -> str:
     if not focuser.dev.armed:
         raise Refused('The camera did not arm the Focuser: try again.')
     return f'Focuser armed at position {focuser.dev.position}.'
+
+
+def _update_server(body: dict) -> str:
+    """The Update stops the server: never while N.I.N.A. holds a Device. Returns once the download has
+    started; the update section reports what follows."""
+    connected = [name for name, dev in (('Camera', camera.dev), ('Focuser', focuser.dev)) if dev.connected]
+    if connected:
+        raise Refused(f'The {" and the ".join(connected)} {"is" if len(connected) == 1 else "are"} Connected: '
+                      'disconnect in N.I.N.A. first, the Update restarts the Alpaca Server.')
+    try:
+        return update.updater.start()
+    except update.Refused as e:
+        raise Refused(str(e))
 
 
 EDITABLE = ('camera_url', 'sensor_type')
@@ -221,6 +243,7 @@ def _save_settings(body: dict) -> str:
 ACTIONS = {
     'arm_focuser': Action(_arm_focuser, confirm=True),
     'settings': Action(_save_settings),
+    'update': Action(_update_server, confirm=True),
 }
 
 
