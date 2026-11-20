@@ -102,14 +102,18 @@ class Alpaca:
 
 
 class AlpacaServer:
-    """app.py --config CONFIG, or app.py alone (configuration from the user folder) when use_option is False."""
+    """app.py --config CONFIG, or app.py alone (configuration from the user folder) when use_option is False.
+    Always without the tray icon (--no-tray), unless tray is True."""
 
-    def __init__(self, config: Path, cwd: Path, use_option: bool = True, env: dict | None = None):
+    def __init__(self, config: Path, cwd: Path, use_option: bool = True, env: dict | None = None,
+                 tray: bool = False):
         env = dict(os.environ if env is None else env)
         env.setdefault(RELEASES_URL_ENV, NO_GITHUB)
         self.port = int(next(line.split('=')[1] for line in config.read_text().splitlines()
                              if line.startswith('port')))
         option = ['--config', str(config)] if use_option else []
+        if not tray:
+            option.append('--no-tray')
         # -X faulthandler: SIGABRT on a hung start dumps every thread's stack to stderr (see below).
         self.proc = subprocess.Popen([sys.executable, '-X', 'faulthandler', str(SERVER_DIR / 'app.py'), *option],
                                      cwd=cwd, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)

@@ -17,6 +17,9 @@ a = Analysis(
         (SERVER + '/dashboard.html', '.'),
     ],
     binaries=collect_dynamic_libs('rawpy'),
+    # tray.py imports pystray inside Tray.run(), and pystray picks its backend at run time:
+    # pyinstaller-hooks-contrib's hook-pystray collects them all, the Windows one is named to be sure.
+    hiddenimports=['pystray', 'pystray._win32', 'PIL.Image', 'PIL.ImageDraw'],
     runtime_hooks=[SPECPATH + '/rthook_streams.py'],
     excludes=['tkinter'],
 )
