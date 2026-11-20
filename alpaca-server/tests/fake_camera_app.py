@@ -3,6 +3,7 @@ same plain-text replies, backed by a little state machine instead of the Camera.
 
 Each Bulb exposure (/capture?ms=N) writes tests/data/sample.ARW to the fake card N ms later.
 """
+import socketserver
 import threading
 import time
 import urllib.parse
@@ -148,13 +149,21 @@ class _Handler(BaseHTTPRequestHandler):
                            'not found\n')
 
 
+class _Server(ThreadingHTTPServer):
+    """ThreadingHTTPServer without its socket.getfqdn() at bind, which can hang (GitHub macOS runners)."""
+
+    def server_bind(self):
+        socketserver.TCPServer.server_bind(self)
+        self.server_name, self.server_port = self.server_address[:2]
+
+
 class FakeCameraApp:
     """Serves a FakeCamera on 127.0.0.1, on a free port, in a background thread."""
 
     def __init__(self):
         self.camera = FakeCamera()
         handler = type('Handler', (_Handler,), {'camera': self.camera})
-        self._httpd = ThreadingHTTPServer(('127.0.0.1', 0), handler)
+        self._httpd = _Server(('127.0.0.1', 0), handler)
         self._httpd.daemon_threads = True
         self.url = f'http://127.0.0.1:{self._httpd.server_address[1]}'
         self._thread = threading.Thread(target=self._httpd.serve_forever, daemon=True)

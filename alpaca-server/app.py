@@ -61,7 +61,7 @@ import sys
 import traceback
 import inspect
 from wsgiref.simple_server import WSGIRequestHandler, WSGIServer, make_server
-from socketserver import ThreadingMixIn
+from socketserver import TCPServer, ThreadingMixIn
 from enum import IntEnum
 
 # -- isort wants the above line to be blank --
@@ -91,6 +91,13 @@ API_VERSION = 1
 class ThreadingWSGIServer(ThreadingMixIn, WSGIServer):
     """One thread per request: clients poll ImageReady while ImageArray streams (nex5r-ascom change)."""
     daemon_threads = True
+
+    def server_bind(self):
+        """HTTPServer.server_bind without socket.getfqdn(): that reverse lookup of the bound address can
+        hang for tens of seconds (GitHub macOS runners), before the socket listens (nex5r-ascom change)."""
+        TCPServer.server_bind(self)
+        self.server_name, self.server_port = self.server_address[:2]
+        self.setup_environ()
 
 
 class LoggingWSGIRequestHandler(WSGIRequestHandler):
