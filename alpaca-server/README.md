@@ -17,6 +17,7 @@ Based on the official ASCOM [AlpycaDevice](https://github.com/ASCOMInitiative/Al
 - `nex5r.py`: HTTP client for camera-app (`/status`, `/shutter`, `/iso`, `/capture?ms=`, `/files`, `/dcim/`, `/focus`, `/focusarm`).
 - `version.py`: the Version (ADR 0001), written by release-please. Both Devices return it as `DriverVersion`, the management description as `Version`, and the startup log line names it.
 - `dashboard.py`, `dashboard.html`: the Dashboard (see Dashboard).
+- `release.py`: New Release detection (see Dashboard).
 - `config-template.toml`: the template of the configuration (see Configuration).
 - `installer/`: the Windows installer (see Windows installer).
 - `tests/`: the test bench (see Tests).
@@ -26,6 +27,8 @@ Based on the official ASCOM [AlpycaDevice](https://github.com/ASCOMInitiative/Al
 Open `http://<server address>:11111/` from any machine on the local network (with the default `ip_address = ''` the server listens on every address). The read-only page shows whether camera-app is Reachable and its Version, whether the Camera is Connected and exposing, whether the Focuser is Connected and armed and its position (0..32), and the Alpaca Server's Version, with a warning when the two Versions differ (expected after an Update until the APK is reinstalled, ADR 0001).
 
 The page polls `GET /dashboard/status` (JSON, one key per section) every 2 s. That route asks camera-app for `/status` at most once a second, with a 1.5 s timeout, so a stopped camera-app shows as not Reachable within 2 to 4 s.
+
+The Release section tells whether a newer Release exists. At startup, then every 6 h, the server asks the GitHub API for the latest Release (`releases/latest`: drafts and prereleases are never the latest) in a background thread, and compares its Version with its own: "Version X.Y.Z available" (also as a banner, with a link to the Release notes), "up to date" (same Version, an older one, or no Release yet), or "cannot check" (no network or a GitHub error; the server carries on normally and tries again 6 h later). Nothing is installed automatically. The environment variable `NEX5R_RELEASES_URL` replaces the GitHub API URL (the tests point it to a fake GitHub).
 
 ## Configuration
 
