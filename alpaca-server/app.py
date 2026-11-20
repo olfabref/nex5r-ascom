@@ -56,6 +56,7 @@
 # 03-Jan-2025   rbd 1.1 Clarify devices vs device types at import site. Comment only,
 #               no logic changes.
 #
+import argparse
 import sys
 import traceback
 import inspect
@@ -71,6 +72,7 @@ from falcon import Request, Response, App, HTTPInternalServerError
 import management
 import setup
 import log
+import config
 from config import Config
 from discovery import DiscoveryResponder
 from shr import set_shr_logger
@@ -225,8 +227,15 @@ def falcon_uncaught_exception_handler(req: Request, resp: Response, ex: BaseExce
 # ===========
 # APP STARTUP
 # ===========
-def main():
+def main(argv: list[str] | None = None):
     """ Application startup"""
+
+    # nex5r-ascom: --config PATH loads the configuration from PATH instead of ./config.toml
+    parser = argparse.ArgumentParser(description='Sony NEX-5R Alpaca server')
+    parser.add_argument('--config', metavar='PATH', help='configuration file (default: config.toml next to app.py)')
+    args = parser.parse_args(argv)
+    if args.config:
+        config.load(args.config)
 
     logger = log.init_logging()
     # Share this logger throughout
