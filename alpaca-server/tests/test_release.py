@@ -122,3 +122,22 @@ def test_check_repeats_and_tells_listeners_when_a_release_appears(github):
 def test_an_older_release_than_this_version_is_up_to_date(github):
     github.release = 'v1.1.9'
     assert release.ReleaseCheck(current='1.2.0', url=github.url).check()['state'] == 'up_to_date'
+
+
+def test_https_requests_trust_the_system_certificates(monkeypatch, tmp_path):
+    # python.org's Python on macOS ships no CA certificates: without the OS trust store, every GitHub
+    # request failed with CERTIFICATE_VERIFY_FAILED (the Release check said "cannot check").
+    import truststore
+    import update
+    contexts = []
+
+    def urlopen(req, timeout=None, context=None):
+        contexts.append(context)
+        raise OSError('stop here')
+
+    monkeypatch.setattr(release.urllib.request, 'urlopen', urlopen)
+    with pytest.raises(release.ReleaseError):
+        release.latest_release('https://example.invalid/releases/latest')
+    with pytest.raises(update.UpdateError):
+        update.download('https://example.invalid/setup.exe', tmp_path / 'setup.exe')
+    assert len(contexts) == 2 and all(isinstance(c, truststore.SSLContext) for c in contexts)
