@@ -18,6 +18,7 @@ Based on the official ASCOM [AlpycaDevice](https://github.com/ASCOMInitiative/Al
 - `version.py`: the Version (ADR 0001), written by release-please. Both Devices return it as `DriverVersion`, the management description as `Version`, and the startup log line names it.
 - `dashboard.py`, `dashboard.html`: the Dashboard (see Dashboard).
 - `release.py`: New Release detection (see Dashboard).
+- `update.py`: the Update (see Dashboard).
 - `tray.py`: the tray icon (see Tray icon).
 - `config-template.toml`: the template of the configuration (see Configuration).
 - `installer/`: the Windows installer (see Windows installer).
@@ -34,6 +35,8 @@ The page polls `GET /dashboard/status` (JSON, one key per section) every 2 s. Th
 Actions are `POST /dashboard/action/<name>` with a JSON body (`{"confirmed": true}` for an action that needs a confirmation), answering `{"ok": ..., "message": ...}`: 200 done, 409 refused now, 400 no confirmation, 404 unknown action, 415 not JSON (so a form on another site cannot trigger one).
 
 The Release section tells whether a newer Release exists. At startup, then every 6 h, the server asks the GitHub API for the latest Release (`releases/latest`: drafts and prereleases are never the latest) in a background thread, and compares its Version with its own: "Version X.Y.Z available" (also as a banner, with a link to the Release notes), "up to date" (same Version, an older one, or no Release yet), or "cannot check" (no network or a GitHub error; the server carries on normally and tries again 6 h later). Nothing is installed automatically. The environment variable `NEX5R_RELEASES_URL` replaces the GitHub API URL (the tests point it to a fake GitHub).
+
+**Update** (Update section, ADR 0002) updates the Alpaca Server to the latest Release, after a confirmation. It is refused while the Camera or the Focuser is Connected (disconnect in N.I.N.A. first), when there is no newer Release, or when GitHub cannot be reached. On Windows (the installed executable) the server downloads the Release's `nex5r-ascom-setup.exe` and `SHA256SUMS` into a temporary folder, checks the installer's SHA-256, launches it detached in silent mode (its log: `install.log` next to it) and quits; the installer installs and starts the new server, the page shows "Update in progress" and reloads itself once the new server answers. The configuration in the user folder is kept. A wrong SHA-256 or a failed download cancels the Update: the server keeps running and the section says why. From the sources (Mac) nothing is run: the button shows the command to type (`git -C <checkout> pull`), then restart the server. camera-app is not part of the Update: reinstall its APK of the same Release (the Version mismatch warning says so).
 
 ## Tray icon
 
@@ -96,7 +99,7 @@ The installer is not code-signed, so on first launch Windows SmartScreen shows "
 
 Silent mode (used by the Update): `nex5r-ascom-setup.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART`. It stops a running server, installs, then starts the new server. Uninstall from Windows Settings > Apps, or silently with `%LOCALAPPDATA%\Programs\nex5r-ascom\unins000.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART`: it stops the server and removes the files and the start at login, not the configuration.
 
-To build it (on Windows, Python 3.12): `pwsh alpaca-server/installer/build.ps1` writes `alpaca-server/dist/nex5r-ascom-setup.exe` (PyInstaller with `installer/nex5r-ascom.spec`, then Inno Setup 6 with `installer/nex5r-ascom.iss`, installed through Chocolatey if missing). A data file that the server reads next to its code must be listed in the spec's `datas`; `.github/tests/test_installer.py` fails otherwise. CI (`Windows installer` job, on every PR and in the release workflow) runs `installer/check_install.py`: silent install, the server answers the Alpaca management API, reinstall on top keeps the configuration, uninstall removes the start at login.
+To build it (on Windows, Python 3.12): `pwsh alpaca-server/installer/build.ps1` writes `alpaca-server/dist/nex5r-ascom-setup.exe` (PyInstaller with `installer/nex5r-ascom.spec`, then Inno Setup 6 with `installer/nex5r-ascom.iss`, installed through Chocolatey if missing). A data file that the server reads next to its code must be listed in the spec's `datas`; `.github/tests/test_installer.py` fails otherwise. CI (`Windows installer` job, on every PR and in the release workflow) runs `installer/check_install.py`: silent install, the server answers the Alpaca management API, reinstall on top keeps the configuration, uninstall removes the start at login. On PRs it then builds the same code again with a newer Version and runs `installer/check_update.py`: a local fake GitHub (`tests/fake_github.py`) serves that build as the latest Release, and the Update from the Dashboard is cancelled with a wrong SHA-256, then goes from the first build to the newer one with the configuration kept. No real Release is published.
 
 ## Tests
 

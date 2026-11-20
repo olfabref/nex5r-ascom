@@ -64,6 +64,11 @@ class Tray:
             text += f'\nVersion {self._latest()} available'
         return text
 
+    @property
+    def running(self) -> bool:
+        """The icon is shown (run() is blocking): quit() stops it as well as the server."""
+        return self._icon is not None
+
     # -- menu actions
     def open_dashboard(self, *_):
         webbrowser.open(self.url)
