@@ -4,7 +4,7 @@
 <!-- x-release-please-start-version -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.github.olfabref.nex5r"
-    android:versionName="0.0.0">
+    android:versionName="0.1.0">
 <!-- x-release-please-end -->
 
     <uses-sdk android:minSdkVersion="10" android:targetSdkVersion="10" />
