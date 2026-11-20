@@ -17,9 +17,20 @@ pixel_size_um = 4.8         # APS-C 23.5 mm / 4912 px
 max_adu = 16383             # rawpy white level (14-bit scale); black level 512
 bayer_offset_x = 0          # RGGB at (0, 0); derived from rawpy raw_pattern at runtime when it differs
 bayer_offset_y = 0
+sensor_type = 'color'       # 'color' (RGGB, normal use) or 'mono': same Bayer data, but the client does not
+                            # debayer. N.I.N.A. 3.3 nightly #057 contrast-detection autofocus fails on the
+                            # color image ("stride 9840 must be >= 29520"): use 'mono' for daytime AF tests.
 exposure_min = 1.0          # Bulb timed by the app's Handler: sub-second precision not measured
 exposure_max = 3600.0
 file_timeout = 30.0         # seconds after closing to wait for the ARW on the card
+
+[focuser]
+# The lens only takes offsets -16..16 from where the last camera autofocus left it ("arming"); without
+# that autofocus the camera freezes. Alpaca positions 0..32, 16 = the autofocus point.
+arm_mode = 'manual'         # focus mode of the arming autofocus: 'manual' arms without moving the lens
+                            # (position 16 = the hand-set focus); 'auto' / 'dmf' focus first; '' = current
+drive_mode = 'auto'         # focus mode set after arming: offsets move the lens in 'auto' / 'dmf' only
+arm_on_connect = true       # arm at Connect when the camera is not armed yet
 
 [logging]
 log_level = 'INFO'          # 'DEBUG' also logs every GET (the client's polling) and its value

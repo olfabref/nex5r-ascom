@@ -13,14 +13,13 @@ from datetime import datetime, timezone
 from logging import Logger
 
 import numpy as np
-from falcon import Request, Response, before
+from falcon import Request, Response
 
 from cameradevice import CameraDevice, CameraState
 from config import Config
-from exceptions import (DriverException, InvalidOperationException, InvalidValueException,
-                        NotConnectedException, NotImplementedException, ValueNotSetException)
-from shr import MethodResponse, PreProcessRequest, PropertyResponse, StateValue, get_request_field, \
-    getNextTransId, to_bool
+from exceptions import InvalidOperationException, InvalidValueException, ValueNotSetException
+from responders import Fail, Responders, const, not_impl, to_int
+from shr import PropertyResponse, StateValue, get_request_field, getNextTransId, to_bool
 
 logger: Logger = None
 
@@ -57,75 +56,14 @@ def start_camera_device(lgr: Logger):
     _Sub.num_y = Config.sensor_y
 
 
-class Fail(Exception):
-    """Carries an Alpaca error object (exceptions.py) out of a getter/setter/method."""
-    def __init__(self, err):
-        super().__init__(getattr(err, 'Message', str(err)))
-        self.err = err
-
-
-def _need_connection():
-    if not dev.connected:
-        raise Fail(NotConnectedException())
-
-
-def _not_impl():
-    raise Fail(NotImplementedException())
-
-
-# --- responder factories ------------------------------------------------------------------------
-
-def _wrap(exc: Exception, name: str):
-    return exc.err if isinstance(exc, Fail) else DriverException(0x500, f'Camera.{name} failed', exc)
-
-
-def _property(name: str, getter, setter=None, field: str | None = None, connected: bool = True):
-    """GET returns getter(); PUT calls setter(str value of form field `field`)."""
-    def on_get(self, req: Request, resp: Response, devnum: int):
-        try:
-            if connected:
-                _need_connection()
-            resp.text = PropertyResponse(getter(), req).json
-        except Exception as ex:
-            resp.text = PropertyResponse(None, req, _wrap(ex, name)).json
-
-    attrs = {'on_get': on_get, '__module__': __name__, '__doc__': f'Camera.{name}'}
-    if setter is not None:
-        def on_put(self, req: Request, resp: Response, devnum: int):
-            value = get_request_field(field or name, req)        # 400 when missing
-            try:
-                if connected:
-                    _need_connection()
-                setter(value)
-                resp.text = MethodResponse(req).json
-            except Exception as ex:
-                resp.text = MethodResponse(req, _wrap(ex, name)).json
-        attrs['on_put'] = on_put
-    return before(PreProcessRequest(maxdev))(type(name.lower(), (), attrs))
-
-
-def _method(name: str, fn, connected: bool = True):
-    """PUT calls fn(req) and returns its value, if any."""
-    def on_put(self, req: Request, resp: Response, devnum: int):
-        try:
-            if connected:
-                _need_connection()
-            resp.text = MethodResponse(req, value=fn(req)).json
-        except Exception as ex:
-            resp.text = MethodResponse(req, _wrap(ex, name)).json
-    attrs = {'on_put': on_put, '__module__': __name__, '__doc__': f'Camera.{name}'}
-    return before(PreProcessRequest(maxdev))(type(name.lower(), (), attrs))
-
-
-def _const(value):
-    return lambda: value
-
-
-def _int(s: str) -> int:
-    try:
-        return int(s)
-    except ValueError:
-        raise Fail(InvalidValueException(f'not an integer: {s!r}'))
+_r = Responders('Camera', __name__, lambda: dev.connected, maxdev)
+_property = _r.property
+_method = _r.method
+_const = const
+_int = to_int
+_not_impl = not_impl
+_need_connection = _r.need_connection
+_wrap = _r.wrap
 
 
 # --- members ------------------------------------------------------------------------------------
@@ -252,9 +190,10 @@ _CAMERA = [
     _property('PixelSizeX', _const(Config.pixel_size_um)),
     _property('PixelSizeY', _const(Config.pixel_size_um)),
     _property('SensorName', _const('Sony NEX-5R APS-C')),
-    _property('SensorType', _const(2)),                  # RGGB
-    _property('BayerOffsetX', _bayer(0)),
-    _property('BayerOffsetY', _bayer(1)),
+    # RGGB; 'mono' sends the same Bayer data as monochrome (no debayering in the client)
+    _property('SensorType', _const(0 if Config.sensor_mono else 2)),
+    _property('BayerOffsetX', _not_impl if Config.sensor_mono else _bayer(0)),
+    _property('BayerOffsetY', _not_impl if Config.sensor_mono else _bayer(1)),
     _property('BinX', _const(1), _set_bin),
     _property('BinY', _const(1), _set_bin),
     _property('MaxBinX', _const(1)),
@@ -355,8 +294,7 @@ def _image_responder(name: str):
             resp.text = json.dumps(body.__dict__)
         except Exception as ex:
             resp.text = PropertyResponse(None, req, _wrap(ex, name)).json
-    attrs = {'on_get': on_get, '__module__': __name__, '__doc__': f'Camera.{name}'}
-    return before(PreProcessRequest(maxdev))(type(name.lower(), (), attrs))
+    return _r.responder(name, {'on_get': on_get})
 
 
 imagearray = _image_responder('ImageArray')

@@ -22,7 +22,7 @@ On the camera: Menu → Application → **NEX5R Dev**. The trash button exits.
 
 ## Debugging
 
-The camera restarts its Android side whenever an app starts or exits, which wipes logcat and drops Wi-Fi/adb. The app logs to `NEX5R/LOG.TXT` on the SD card instead. Read it over adb after reopening OpenMemories: Tweak:
+The camera restarts its Android side whenever an app starts or exits, which wipes logcat and drops Wi-Fi/adb. The app logs to `NEX5R/LOG.TXT` on the SD card instead. Read it over adb while NEX5R Dev runs (the app turns Wi-Fi on and starts adbd itself; adb stops when the app exits):
 
 ```sh
 adb connect <camera-ip>:5555

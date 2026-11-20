@@ -48,6 +48,7 @@ from config import Config
 from logging import Logger
 # For each *type* of device served
 from camera import CameraMetadata
+from focuser import FocuserMetadata
 
 logger: Logger = None
 #logger = None                   # Safe on Python 3.7 but no intellisense in VSCode etc.
@@ -88,6 +89,12 @@ class configureddevices():
             'DeviceType'    : CameraMetadata.DeviceType,
             'DeviceNumber'  : 0,
             'UniqueID'      : CameraMetadata.DeviceID
+            },
+            {
+            'DeviceName'    : FocuserMetadata.Name,
+            'DeviceType'    : FocuserMetadata.DeviceType,
+            'DeviceNumber'  : 0,
+            'UniqueID'      : FocuserMetadata.DeviceID
             }
         ]
         resp.text = PropertyResponse(confarray, req).json

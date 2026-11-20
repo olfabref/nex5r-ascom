@@ -97,9 +97,13 @@ class Config:
     max_adu: int = get_toml('device', 'max_adu')
     bayer_offset_x: int = get_toml('device', 'bayer_offset_x')
     bayer_offset_y: int = get_toml('device', 'bayer_offset_y')
+    sensor_mono: bool = get_toml('device', 'sensor_type') == 'mono'
     exposure_min: float = get_toml('device', 'exposure_min')
     exposure_max: float = get_toml('device', 'exposure_max')
     file_timeout: float = get_toml('device', 'file_timeout')
+    focus_arm_mode: str = get_toml('focuser', 'arm_mode')
+    focus_drive_mode: str = get_toml('focuser', 'drive_mode')
+    focus_arm_on_connect: bool = get_toml('focuser', 'arm_on_connect')
     log_level: int = logging.getLevelName(get_toml('logging', 'log_level'))  # Not documented but works (!!!!)
     log_to_stdout: str = get_toml('logging', 'log_to_stdout')
     max_size_mb: int = get_toml('logging', 'max_size_mb')

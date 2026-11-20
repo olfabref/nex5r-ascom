@@ -110,3 +110,42 @@ class Nex5r:
     def download(self, name: str) -> bytes:
         """One DCIM file (~16 MB ARW, ~13 s over the camera's Wi-Fi)."""
         return self._get('/dcim/' + name, timeout=120)
+
+    # --- focus (camera-app FocusControl) --------------------------------------------------------
+
+    @staticmethod
+    def _focus_state(text: str) -> dict:
+        """The focus_* lines of a reply, without the prefix: armed, offset, moving, min, max, mode, last."""
+        out = {}
+        for line in text.splitlines():
+            k, sep, v = line.partition('=')
+            if sep and k.startswith('focus_'):
+                out[k[len('focus_'):]] = v.strip()
+        return out
+
+    def focus(self) -> dict:
+        return self._focus_state(self._text('/focus'))
+
+    def focus_arm(self, mode: str = '') -> dict:
+        """Autofocus in `mode` (auto, dmf, manual; '' = current): arms the offsets, current position = 0."""
+        text = self._get('/focusarm', {'mode': mode} if mode else None, timeout=15).decode('utf-8', 'replace')
+        st = self._focus_state(text)
+        if st.get('armed') != 'true':
+            raise CameraError(f'focus not armed: {text.splitlines()[0] if text else "?"}')
+        return st
+
+    def focus_mode(self, mode: str) -> dict:
+        """Sets the focus mode (auto, dmf, manual) without an autofocus."""
+        st = self._focus_state(self._text('/focusmode', {'value': mode}))
+        if st.get('mode') != mode:
+            raise CameraError(f'focus mode {mode} not applied: {st.get("last", "?")}')
+        return st
+
+    def focus_move(self, offset: int) -> dict:
+        """Moves the lens to `offset` (-16..16 from the reference) and waits; raises unless accepted."""
+        text = self._get('/focus', {'offset': offset}, timeout=15).decode('utf-8', 'replace')
+        first = text.splitlines()[0] if text else ''
+        st = self._focus_state(text)
+        if not first.startswith(f'shift({offset}) -> true') or st.get('offset') != str(offset):
+            raise CameraError(f'focus move to {offset} failed: {first}')
+        return st

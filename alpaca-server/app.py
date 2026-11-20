@@ -79,6 +79,7 @@ from shr import set_shr_logger
 # FOR EACH ASCOM DEVICE TYPE #
 ##############################
 import camera
+import focuser
 
 #--------------
 API_VERSION = 1
@@ -232,6 +233,7 @@ def main():
     log.logger = logger
     exceptions.logger = logger
     camera.start_camera_device(logger)
+    focuser.start_focuser_device(logger)
     discovery.logger = logger
     set_shr_logger(logger)
 
@@ -239,6 +241,7 @@ def main():
     # FOR EACH ASCOM DEVICE #
     #########################
     camera.logger = logger
+    focuser.logger = logger
 
     # -----------------------------
     # Last-Chance Exception Handler
@@ -262,6 +265,7 @@ def main():
     # FOR EACH ASCOM DEVICE #
     #########################
     init_routes(falc_app, 'camera', camera)
+    init_routes(falc_app, 'focuser', focuser)
     #
     # Initialize routes for Alpaca support endpoints
     falc_app.add_route('/management/apiversions', management.apiversions())
@@ -269,6 +273,7 @@ def main():
     falc_app.add_route(f'/management/v{API_VERSION}/configureddevices', management.configureddevices())
     falc_app.add_route('/setup', setup.svrsetup())
     falc_app.add_route(f'/setup/v{API_VERSION}/camera/{{devnum}}/setup', setup.devsetup())
+    falc_app.add_route(f'/setup/v{API_VERSION}/focuser/{{devnum}}/setup', setup.devsetup())
 
     #
     # Install the unhandled exception processor. See above,

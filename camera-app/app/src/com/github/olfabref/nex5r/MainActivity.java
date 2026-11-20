@@ -19,13 +19,8 @@ import com.sony.scalar.hardware.CameraEx;
 import com.sony.scalar.sysutil.ScalarInput;
 
 /**
- * Focus test: live view plus calls to CameraEx.shiftFocusPosition(offset).
- *
- * What we know on the NEX-5R (fw 1.03):
- * - the argument is an ABSOLUTE offset from a reference point, within [-16, 16];
- * - the call blocks forever (and freezes the camera) unless an autofocus was started since the
- *   app opened, even in manual focus mode where AF does not move the lens;
- * - the call must not run on the UI thread.
+ * Focus page: live view plus lens focus offsets through FocusControl (what the NEX-5R allows is
+ * described there). HTTP /focus and /focusarm drive the same FocusControl.
  *
  * Left / right: move the target offset by -/+ step. Up / down: change step size.
  * Enter: cycle focus mode (auto, dmf, manual). Half-press: autofocus. Full press: take a picture.
@@ -35,11 +30,7 @@ import com.sony.scalar.sysutil.ScalarInput;
  * The app turns Wi-Fi on and serves HttpServer on port 8080 while it runs.
  */
 public class MainActivity extends Activity implements SurfaceHolder.Callback {
-    private static final int MIN_OFFSET = -16;   // min-focus-shift
-    private static final int MAX_OFFSET = 16;    // max-focus-shift
     private static final int[] STEP_SIZES = {1, 2, 4, 8, 16};
-    private static final long ARM_DELAY_MS = 1000;
-    private static final long HANG_MS = 5000;
 
     private SurfaceHolder surfaceHolder;
     private TextView overlay;
@@ -51,13 +42,9 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
     private int noIpTicks = 0;   // wifiWatch ticks (2 s) without an IP
 
     private int stepIndex = 0;
-    private int offset = 0;        // last offset the camera accepted
-    private boolean armed = false; // an autofocus was started since the camera was opened
-    private int calls = 0;
-    private int failures = 0;
-    private String lastResult = "-";
-    private volatile long pendingSince = 0;   // start time of the running shift call, 0 if none
-    private boolean hangLogged = false;
+    private String lastResult = "-";   // focus page: last non-focus action (open, photo)
+    private FocusControl focus;
+    private final android.os.Handler ticker = new android.os.Handler();
 
     private BulbTest bulb;
     private volatile boolean keyShoots = true;
@@ -73,6 +60,8 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
         bulb = new BulbTest(ticker, new Runnable() {
             public void run() { refresh(); }
         });
+        focus = new FocusControl(ticker);
+        bulb.setFocusControl(focus);
 
         SurfaceView surfaceView = new SurfaceView(this);
         surfaceHolder = surfaceView.getHolder();
@@ -114,6 +103,7 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
             Camera.Parameters params = camera.getNormalCamera().getParameters();
             Logger.info("Camera parameters: " + params.flatten());
             bulb.attach(camera);
+            focus.attach(camera);
             if (bulbPage) bulb.enterManualExposure();
         } catch (Throwable t) {
             Logger.error("Opening the camera failed", t);
@@ -135,6 +125,7 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
             http = null;
         }
         bulb.detach();
+        focus.detach();
         if (camera != null) {
             camera.release();
             camera = null;
@@ -146,9 +137,9 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
             displayManager.release();
             displayManager = null;
         }
-        armed = false;
         setAutoPowerOff(true);
-        Logger.info("=== Focus test end: offset " + offset + ", " + calls + " calls, " + failures + " failed");
+        Logger.info("=== Focus test end: offset " + focus.offset() + ", " + focus.calls() + " calls, "
+                + focus.failures() + " failed");
     }
 
     @Override
@@ -261,137 +252,66 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
                 || scan == ScalarInput.ISV_KEY_MENU;
     }
 
-    /** Moves the target offset by delta (clamped to the camera's window) and sends it. */
-    private void moveBy(int delta) {
+    /**
+     * Moves the target offset by delta on a worker thread (shiftFocusPosition never returns on the UI
+     * thread); arms first with an autofocus in the current mode if needed.
+     */
+    private void moveBy(final int delta) {
         if (camera == null) return;
-        if (pendingSince != 0) {
+        if (focus.isMoving()) {
             lastResult = "busy: shift still running";
             return;
         }
-        final int target = Math.max(MIN_OFFSET, Math.min(MAX_OFFSET, offset + delta));
-        if (target == offset) {
-            lastResult = "at window limit (" + offset + ")";
-            Logger.info(lastResult);
-            return;
-        }
-        if (!armed) {
-            // Without a prior autofocus, shiftFocusPosition never returns and freezes the camera.
-            autoFocus();
-            lastResult = "arming (autofocus), then shift(" + target + ")";
-            ticker.postDelayed(new Runnable() {
-                public void run() { shift(target); }
-            }, ARM_DELAY_MS);
-            return;
-        }
-        shift(target);
-    }
-
-    /**
-     * Runs shiftFocusPosition on a worker thread: from the UI thread the call never returns.
-     * One call at a time; the overlay shows how long it has run, and a hang is logged.
-     */
-    private void shift(final int target) {
-        if (camera == null || pendingSince != 0) return;
-        final CameraEx cam = camera;
-        final int steps = target;
-        calls++;
-        hangLogged = false;
-        pendingSince = System.currentTimeMillis();
-        lastResult = "shift(" + steps + ") running...";
-        Logger.info("shift(" + steps + ") calling | offset " + offset + " | focus-mode " + focusMode() + " | armed " + armed);
         new Thread(new Runnable() {
             public void run() {
-                String result;
-                boolean ok = false;
-                try {
-                    ok = cam.shiftFocusPosition(steps);
-                    result = "shift(" + steps + ") -> " + ok;
-                } catch (Throwable t) {
-                    result = "shift(" + steps + ") threw " + t;
-                }
-                final long ms = System.currentTimeMillis() - pendingSince;
-                final boolean success = ok;
-                final String message = result + " in " + ms + " ms";
-                Logger.info(message);
-                runOnUiThread(new Runnable() {
-                    public void run() {
-                        pendingSince = 0;
-                        if (success) {
-                            offset = target;
-                        } else {
-                            failures++;
-                        }
-                        lastResult = message;
-                        refresh();
-                    }
+                if (!focus.isArmed()) focus.arm("");
+                focus.moveTo(focus.offset() + delta);
+                ticker.post(new Runnable() {
+                    public void run() { refresh(); }
                 });
             }
-        }, "focus-shift").start();
-        ticker.postDelayed(tick, 500);
+        }, "focus-key").start();
+        lastResult = "moving...";
     }
 
-    private final android.os.Handler ticker = new android.os.Handler();
-    private final Runnable tick = new Runnable() {
-        public void run() {
-            if (pendingSince == 0) return;
-            long ms = System.currentTimeMillis() - pendingSince;
-            lastResult = "shift running for " + (ms / 1000) + " s...";
-            if (ms > HANG_MS && !hangLogged) {
-                hangLogged = true;
-                Logger.info("HANG: shift still running after " + ms + " ms | armed " + armed);
+    /** Runs a FocusControl call off the UI thread, then refreshes the overlay. */
+    private void focusAsync(final Runnable r) {
+        new Thread(new Runnable() {
+            public void run() {
+                r.run();
+                ticker.post(new Runnable() {
+                    public void run() { refresh(); }
+                });
             }
-            refresh();
-            ticker.postDelayed(this, 500);
-        }
-    };
+        }, "focus-key").start();
+    }
 
     private void toggleFocusMode() {
         if (camera == null) return;
-        try {
-            Camera.Parameters params = camera.getNormalCamera().getParameters();
-            // Cycle auto -> dmf -> manual (focus-mode-values on the NEX-5R: manual,auto,dmf).
-            String current = params.getFocusMode();
-            String next = "auto".equals(current) ? "dmf" : "dmf".equals(current) ? "manual" : "auto";
-            params.setFocusMode(next);
-            camera.getNormalCamera().setParameters(params);
-            lastResult = "focus-mode -> " + focusMode();
-        } catch (Throwable t) {
-            lastResult = "focus-mode change threw " + t;
-        }
-        Logger.info(lastResult);
+        String current = focus.focusMode();
+        // Cycle auto -> dmf -> manual (focus-mode-values on the NEX-5R: manual,auto,dmf).
+        final String next = "auto".equals(current) ? "dmf" : "dmf".equals(current) ? "manual" : "auto";
+        focusAsync(new Runnable() {
+            public void run() { focus.setFocusMode(next); }
+        });
     }
 
     private void autoFocus() {
         if (camera == null) return;
-        try {
-            camera.getNormalCamera().autoFocus(null);
-            armed = true;
-            // Assumption under test: AF makes the current lens position the new reference (offset 0).
-            offset = 0;
-            lastResult = "autofocus in " + focusMode() + " (armed, offset reset to 0)";
-        } catch (Throwable t) {
-            lastResult = "autofocus threw " + t;
-        }
-        Logger.info(lastResult);
+        focusAsync(new Runnable() {
+            public void run() { focus.arm(""); }
+        });
     }
 
     private void takePicture() {
         if (camera == null) return;
         try {
             camera.getNormalCamera().takePicture(null, null, null);
-            lastResult = "picture at offset " + offset;
+            lastResult = "picture at offset " + focus.offset();
         } catch (Throwable t) {
             lastResult = "takePicture threw " + t;
         }
         Logger.info(lastResult);
-    }
-
-    private String focusMode() {
-        try {
-            return camera.getNormalCamera().getParameters().getFocusMode();
-        } catch (Throwable t) {
-            return "?";
-        }
     }
 
     private void refresh() {
@@ -399,11 +319,13 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
             overlay.setText(bulb.status() + "\nhttp://" + ip + ":" + HttpServer.PORT + "/status");
             return;
         }
-        overlay.setText("FOCUS TEST\n"
-                + "Offset: " + offset + " (window " + MIN_OFFSET + ".." + MAX_OFFSET + ")   Step: " + STEP_SIZES[stepIndex] + "\n"
-                + "Focus mode: " + (camera == null ? "-" : focusMode()) + "   Armed: " + armed + "\n"
-                + "Calls: " + calls + "   Failed: " + failures + "\n"
-                + lastResult + "\n\n"
+        overlay.setText("FOCUS\n"
+                + "Offset: " + focus.offset() + " (window " + FocusControl.MIN_OFFSET + ".." + FocusControl.MAX_OFFSET
+                + ")   Step: " + STEP_SIZES[stepIndex] + "\n"
+                + "Focus mode: " + (camera == null ? "-" : focus.focusMode()) + "   Armed: " + focus.isArmed()
+                + (focus.isMoving() ? "   MOVING" : "") + "\n"
+                + "Calls: " + focus.calls() + "   Failed: " + focus.failures() + "\n"
+                + focus.lastResult() + "\n" + lastResult + "\n\n"
                 + "</> move  ^/v step  OK mode\n"
                 + "half-press AF  shutter photo  SK1 bulb page  trash exit");
     }
@@ -441,8 +363,26 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
         }
         http = new HttpServer(new HttpServer.Api() {
             public String status() {
-                return "ip=" + ip + "\n" + bulb.state();
+                return "ip=" + ip + "\n" + bulb.state() + focus.state();
             }
+
+            public String focus(int offset) {
+                // Moving the lens during an exposure would blur it; the app also refuses to shoot
+                // while a shift runs (see capture).
+                if (bulb.isExposing()) return "busy: exposure running\n" + focus.state();
+                return focus.moveTo(offset) + "\n" + focus.state();
+            }
+
+            public String focusArm(String mode) {
+                if (bulb.isExposing()) return "busy: exposure running\n" + focus.state();
+                return focus.arm(mode) + "\n" + focus.state();
+            }
+
+            public String focusMode(String mode) {
+                return focus.setFocusMode(mode) + "\n" + focus.state();
+            }
+
+            public String focusState() { return focus.state(); }
 
             public String keys(final String mode) {
                 // Fake a full shutter press (S1_1, S1_2, S2, then releases) with the scan codes a real
@@ -610,6 +550,7 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
             }
 
             public String capture(final int ms, final String method, final boolean af) {
+                if (focus.isMoving()) return "busy: focus shift running";
                 // Camera calls must run on the UI thread: post and wait for the outcome.
                 final String[] result = {"timeout waiting for the UI thread"};
                 final java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(1);

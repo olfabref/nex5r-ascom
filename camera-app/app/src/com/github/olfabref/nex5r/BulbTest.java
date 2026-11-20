@@ -28,6 +28,7 @@ final class BulbTest {
     private final Handler handler;
     private final Runnable onChange;
     private CameraEx camera;
+    private FocusControl focus;   // told when an autofocus ends
 
     private int durationIndex = 1;
     private String shutterSpeed = "?";
@@ -109,6 +110,7 @@ final class BulbTest {
             cam.setAutoFocusDoneListener(new CameraEx.AutoFocusDoneListener() {
                 public void onDone(int status, int[] areas, CameraEx c) {
                     event("onAutoFocusDone status " + status);
+                    if (focus != null) focus.onAutoFocusDone(status);
                     Runnable r = pendingOpen;
                     pendingOpen = null;
                     if (r != null) handler.post(r);
@@ -131,6 +133,8 @@ final class BulbTest {
         }
         logSettings("attach");
     }
+
+    void setFocusControl(FocusControl f) { focus = f; }
 
     void detach() {
         try {

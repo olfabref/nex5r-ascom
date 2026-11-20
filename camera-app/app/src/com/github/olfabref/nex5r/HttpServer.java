@@ -23,6 +23,12 @@ import java.util.Comparator;
  *                           timed Bulb exposure (the shutter must already be on BULB), see BulbTest
  *   GET /shutter?dir=slower|faster  one shutter speed step
  *   GET /iso[?value=N]      set the ISO (one of "isos" in /status); returns the status
+ *   GET /focus[?offset=N]   focus state (focus_* lines, also in /status); offset=N in -16..16 moves the
+ *                           lens to that offset from the reference and waits (~300 ms). Refused before
+ *                           /focusarm (the camera would freeze) and during an exposure
+ *   GET /focusarm[?mode=auto|dmf|manual]  autofocus (in that focus mode, else the current one): arms the
+ *                           offsets and makes the current lens position offset 0
+ *   GET /focusmode?value=auto|dmf|manual  set the focus mode only
  *   GET /preview?on=0|1     stopPreview / startPreview
  *   GET /remote?on=0|1      ParametersModifier.setRemoteControlMode
  *   GET /keyshoot?on=0|1    0: a physical full press does not call takePicture (firmware test)
@@ -56,6 +62,14 @@ final class HttpServer {
         String shutter(boolean slower);
 
         String iso(int value);
+
+        String focus(int offset);
+
+        String focusArm(String mode);
+
+        String focusMode(String mode);
+
+        String focusState();
 
         String preview(boolean on);
 
@@ -170,6 +184,24 @@ final class HttpServer {
             } catch (NumberFormatException e) {
                 return text(out, 400, "value=N required\n");
             }
+        }
+        if (path.equals("/focus")) {
+            if (param(query, "offset").length() == 0) return text(out, 200, api.focusState());
+            try {
+                return text(out, 200, api.focus(Integer.parseInt(param(query, "offset"))));
+            } catch (NumberFormatException e) {
+                return text(out, 400, "offset=N required\n");
+            }
+        }
+        if (path.equals("/focusarm")) {
+            String mode = param(query, "mode");
+            if (mode.length() > 0 && !isFocusMode(mode)) return text(out, 400, "mode=auto|dmf|manual\n");
+            return text(out, 200, api.focusArm(mode));
+        }
+        if (path.equals("/focusmode")) {
+            String mode = param(query, "value");
+            if (!isFocusMode(mode)) return text(out, 400, "value=auto|dmf|manual required\n");
+            return text(out, 200, api.focusMode(mode));
         }
         if (path.equals("/shutter")) {
             String dir = param(query, "dir");
@@ -310,6 +342,10 @@ final class HttpServer {
             }
         }
         return out.append('\n').toString();
+    }
+
+    private static boolean isFocusMode(String m) {
+        return m.equals("auto") || m.equals("dmf") || m.equals("manual");
     }
 
     private static String param(String query, String name) {
