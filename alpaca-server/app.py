@@ -66,6 +66,7 @@ from enum import IntEnum
 
 # -- isort wants the above line to be blank --
 # Controller classes (for routing)
+import dashboard
 import discovery
 import exceptions
 from falcon import Request, Response, App, HTTPInternalServerError
@@ -285,6 +286,8 @@ def main(argv: list[str] | None = None):
     falc_app.add_route('/setup', setup.svrsetup())
     falc_app.add_route(f'/setup/v{API_VERSION}/camera/{{devnum}}/setup', setup.devsetup())
     falc_app.add_route(f'/setup/v{API_VERSION}/focuser/{{devnum}}/setup', setup.devsetup())
+    # nex5r-ascom: the Dashboard on the root page
+    dashboard.add_routes(falc_app)
 
     #
     # Install the unhandled exception processor. See above,

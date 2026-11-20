@@ -16,8 +16,15 @@ Based on the official ASCOM [AlpycaDevice](https://github.com/ASCOMInitiative/Al
 - `responders.py`: the responder factories both devices share.
 - `nex5r.py`: HTTP client for camera-app (`/status`, `/shutter`, `/iso`, `/capture?ms=`, `/files`, `/dcim/`, `/focus`, `/focusarm`).
 - `version.py`: the Version (ADR 0001), written by release-please. Both Devices return it as `DriverVersion`, the management description as `Version`, and the startup log line names it.
+- `dashboard.py`, `dashboard.html`: the Dashboard (see Dashboard).
 - `config-template.toml`: the template of the configuration (see Configuration).
 - `tests/`: the test bench (see Tests).
+
+## Dashboard
+
+Open `http://<server address>:11111/` from any machine on the local network (with the default `ip_address = ''` the server listens on every address). The read-only page shows whether camera-app is Reachable and its Version, whether the Camera is Connected and exposing, whether the Focuser is Connected and armed and its position (0..32), and the Alpaca Server's Version, with a warning when the two Versions differ (expected after an Update until the APK is reinstalled, ADR 0001).
+
+The page polls `GET /dashboard/status` (JSON, one key per section) every 2 s. That route asks camera-app for `/status` at most once a second, with a 1.5 s timeout, so a stopped camera-app shows as not Reachable within 2 to 4 s.
 
 ## Configuration
 

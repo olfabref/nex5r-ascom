@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>nex5r-ascom Dashboard</title>
+<style>
+  :root { --bg: #fafafa; --fg: #222; --card: #fff; --line: #ddd; --muted: #777;
+          --ok: #1a7f37; --bad: #c62828; --warn-bg: #fff4ce; --warn-fg: #6b4e00; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #141414; --fg: #e6e6e6; --card: #1f1f1f; --line: #333; --muted: #999;
+            --ok: #4ac26b; --bad: #ff6b6b; --warn-bg: #3d3000; --warn-fg: #ffd866; }
+  }
+  body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg);
+         font: 15px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 640px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0 0 12px; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 8px;
+            padding: 10px 14px; margin-bottom: 10px; }
+  h2 { font-size: 15px; margin: 0 0 6px; }
+  dl { display: grid; grid-template-columns: max-content 1fr; gap: 2px 16px; margin: 0; }
+  dt { color: var(--muted); }
+  dd { margin: 0; }
+  .ok { color: var(--ok); } .bad { color: var(--bad); }
+  .warning { background: var(--warn-bg); color: var(--warn-fg); border-radius: 8px;
+             padding: 8px 14px; margin-bottom: 10px; }
+  #updated { color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>nex5r-ascom Dashboard</h1>
+  <div id="warnings"></div>
+  <div id="sections"></div>
+  <p id="updated">Loading…</p>
+</main>
+<script>
+// One renderer per section of GET dashboard/status: title and [label, value] rows.
+// A new section of dashboard.py needs a renderer here; unknown sections are skipped.
+const yes = (v, on, off) => v ? `<span class="ok">${on}</span>` : `<span class="bad">${off}</span>`;
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
+
+const RENDERERS = {
+  server: s => ['Alpaca Server', [['Version', esc(s.version)]]],
+  camera_app: s => ['camera-app', [
+    ['Reachable', yes(s.reachable, 'Reachable', 'not Reachable')],
+    ['Version', s.version == null ? '—' : esc(s.version)],
+  ]],
+  camera: s => ['Camera', [
+    ['Connected', yes(s.connected, 'Connected', 'not Connected')],
+    ['Exposure', s.exposing ? 'in progress (' + esc(s.state.toLowerCase()) + ')' : 'none'],
+  ]],
+  focuser: s => ['Focuser', [
+    ['Connected', yes(s.connected, 'Connected', 'not Connected')],
+    ['Armed', s.armed ? 'yes' : 'no'],
+    ['Position', esc(s.position) + ' / 32' + (s.moving ? ' (moving)' : '')],
+  ]],
+};
+
+// Warnings drawn above the sections, from the whole status.
+const WARNINGS = [
+  st => st.version_mismatch &&
+    `Version mismatch: Alpaca Server ${esc(st.server.version)}, camera-app ${esc(st.camera_app.version ?? 'unknown')}. ` +
+    'Reinstall the camera-app APK of the same Release.',
+];
+
+function render(st) {
+  document.getElementById('warnings').innerHTML =
+    WARNINGS.map(w => w(st)).filter(Boolean).map(t => `<div class="warning">${t}</div>`).join('');
+  document.getElementById('sections').innerHTML = Object.keys(st).filter(k => RENDERERS[k]).map(k => {
+    const [title, rows] = RENDERERS[k](st[k]);
+    return `<section id="${k}"><h2>${title}</h2><dl>` +
+      rows.map(([dt, dd]) => `<dt>${dt}</dt><dd>${dd}</dd>`).join('') + '</dl></section>';
+  }).join('');
+}
+
+async function poll() {
+  const updated = document.getElementById('updated');
+  try {
+    const r = await fetch('dashboard/status', {cache: 'no-store'});
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    render(await r.json());
+    updated.textContent = 'Updated ' + new Date().toLocaleTimeString();
+  } catch (e) {
+    updated.innerHTML = '<span class="bad">Alpaca Server not answering</span> (' + esc(e.message) + ')';
+  }
+}
+
+poll();
+setInterval(poll, 2000);
+</script>
+</body>
+</html>
