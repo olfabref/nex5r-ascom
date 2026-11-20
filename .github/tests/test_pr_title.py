@@ -23,6 +23,7 @@ def check(title: str) -> subprocess.CompletedProcess:
     'docs: N.I.N.A. settings',
     'ci: PR workflow',
     'chore(deps): bump numpy',
+    'chore(main): release 0.1.0',  # the release-please PR
 ])
 def test_conventional_title_passes(title):
     assert check(title).returncode == 0

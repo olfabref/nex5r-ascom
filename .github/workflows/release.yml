@@ -1,0 +1,91 @@
+# Releases (ADR 0001: one Version for the Alpaca Server and camera-app).
+#
+# On every push to main, release-please updates its release PR: the next Version computed from the
+# Conventional Commits since the last Release, CHANGELOG.md, and that Version written into the files of
+# release-please-config.json. Merging the release PR makes release-please create the vX.Y.Z tag and the
+# GitHub Release; the `assets` job then builds the APK at that tag and attaches it with SHA256SUMS.
+#
+# Security: release-please authenticates with RELEASE_PLEASE_TOKEN, a fine-grained PAT (this repository
+# only, contents + pull requests write) created with .github/scripts/release-please-token.sh. A PR opened
+# with GITHUB_TOKEN would not trigger CI, so the required checks would never run on the release PR.
+# This workflow only runs on push to main (never on PR code); GITHUB_TOKEN stays read-only except in
+# `assets`, which needs contents: write to upload to the Release. Step outputs reach the shell through
+# `env:`, never through `${{ }}` inside `run:`.
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    name: release-please
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - id: release
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  assets:
+    name: Release assets
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # gh release upload
+    env:
+      BUILD_TOOLS_VERSION: 35.0.0
+      TAG: ${{ needs.release-please.outputs.tag_name }}
+      VERSION: ${{ needs.release-please.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+          persist-credentials: false
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+        with:
+          packages: build-tools;35.0.0
+          log-accepted-android-sdk-licenses: false
+      # Same throwaway key as the CI build: the camera accepts debug certificates, and Sony-PMCA-RE
+      # installs the APK over USB. A stable release key would be a separate secret.
+      - name: Throwaway debug keystore
+        run: >
+          keytool -genkeypair -keystore "$RUNNER_TEMP/debug.keystore" -storepass android
+          -keypass android -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000
+          -dname "CN=Android Debug,O=Android,C=US" -noprompt
+      - name: Build
+        run: KEYSTORE="$RUNNER_TEMP/debug.keystore" camera-app/build.sh
+      - name: Check that the APK carries the Version of the tag
+        run: |
+          name=$("$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION/aapt" dump badging camera-app/build/nex5r.apk \
+            | sed -n "s/.*versionName='\([^']*\)'.*/\1/p")
+          echo "APK versionName: $name, tag: $TAG"
+          test "v$name" = "$TAG" && test "$name" = "$VERSION"
+          grep -q "^__version__ = '$VERSION'" alpaca-server/version.py
+      - name: Attach the APK and SHA256SUMS to the Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          mkdir dist
+          cp camera-app/build/nex5r.apk dist/nex5r.apk
+          (cd dist && sha256sum nex5r.apk > SHA256SUMS && cat SHA256SUMS)
+          gh release upload "$TAG" dist/nex5r.apk dist/SHA256SUMS --clobber
