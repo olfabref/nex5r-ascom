@@ -31,6 +31,8 @@ The page polls `GET /dashboard/status` (JSON, one key per section) every 2 s. Th
 
 **Re-arm** (Focuser section) runs an Arming, with the `arm_mode` and `drive_mode` of `config.toml`, for example after refocusing by hand when N.I.N.A.'s autofocus ends at 0 or 32. It asks for a confirmation first: the lens becomes position 16, so the positions N.I.N.A. knows no longer match (run its autofocus again). It works whether or not the Focuser is Connected, and is refused while an exposure is in progress or when camera-app does not answer; the page shows the result or the refusal above the sections.
 
+**Settings** changes the Camera's address (`camera_url`, for example on another Wi-Fi network in the field) and `sensor_type` without editing a file or restarting. Save writes them to the `config.toml` the server read (`--config` file or the user folder), changing only those two values (comments and other keys are kept), and uses them at once: the next request goes to the new address, the next Connect reports the new sensor type. It is refused while the Camera or the Focuser is Connected (disconnect in N.I.N.A. first). Every other setting is edited in the file. The poll does not overwrite a field being edited.
+
 Actions are `POST /dashboard/action/<name>` with a JSON body (`{"confirmed": true}` for an action that needs a confirmation), answering `{"ok": ..., "message": ...}`: 200 done, 409 refused now, 400 no confirmation, 404 unknown action, 415 not JSON (so a form on another site cannot trigger one).
 
 The Release section tells whether a newer Release exists. At startup, then every 6 h, the server asks the GitHub API for the latest Release (`releases/latest`: drafts and prereleases are never the latest) in a background thread, and compares its Version with its own: "Version X.Y.Z available" (also as a banner, with a link to the Release notes), "up to date" (same Version, an older one, or no Release yet), or "cannot check" (no network or a GitHub error; the server carries on normally and tries again 6 h later). Nothing is installed automatically. The environment variable `NEX5R_RELEASES_URL` replaces the GitHub API URL (the tests point it to a fake GitHub).
@@ -49,7 +51,7 @@ While the server runs, an icon sits in the system tray (Windows) or the menu bar
 - Mac: `~/Library/Application Support/nex5r-ascom/config.toml`
 - Linux: `$XDG_CONFIG_HOME/nex5r-ascom/config.toml` (default `~/.config/...`)
 
-On first launch the server creates it as a copy of `config-template.toml`; after that it always reads it from there and never rewrites it, so edit it by hand and restart the server. `app.py --help` prints the path. To start again from the template, delete it. An older `alpaca-server/config.toml` next to the code is no longer read: copy it to the user folder.
+On first launch the server creates it as a copy of `config-template.toml`; after that it always reads it from there, and only the Dashboard's Settings write to it (`camera_url` and `sensor_type`, nothing else in the file changes). Edit the other settings by hand and restart the server. `app.py --help` prints the path. To start again from the template, delete it. An older `alpaca-server/config.toml` next to the code is no longer read: copy it to the user folder.
 
 ## Behaviour
 

@@ -26,6 +26,9 @@
              padding: 8px 14px; margin-bottom: 10px; }
   a { color: inherit; }
   #updated { color: var(--muted); font-size: 13px; }
+  input, select { font: inherit; padding: 3px 6px; border-radius: 6px; border: 1px solid var(--line);
+                  background: var(--bg); color: var(--fg); max-width: 100%; box-sizing: border-box; }
+  input { width: 22em; }
   button { font: inherit; padding: 4px 12px; border-radius: 6px; border: 1px solid var(--line);
            background: var(--bg); color: var(--fg); cursor: pointer; }
   button:disabled { opacity: 0.5; cursor: default; }
@@ -39,6 +42,23 @@
   <div id="warnings"></div>
   <div id="result" role="status"></div>
   <div id="sections"></div>
+  <section id="settings">
+    <h2>Settings</h2>
+    <form id="settings-form">
+      <dl>
+        <dt><label for="camera_url">Camera address</label></dt>
+        <dd><input id="camera_url" name="camera_url" type="url" required placeholder="http://192.168.0.23:8080"
+                   autocomplete="off" spellcheck="false"></dd>
+        <dt><label for="sensor_type">Sensor type</label></dt>
+        <dd><select id="sensor_type" name="sensor_type">
+          <option value="color">color (RGGB, normal use)</option>
+          <option value="mono">mono (no debayering, daytime autofocus tests)</option>
+        </select></dd>
+        <dt></dt>
+        <dd><button type="submit" id="settings-save">Save</button> <span id="settings-note" class="muted"></span></dd>
+      </dl>
+    </form>
+  </section>
   <p id="updated">Loading…</p>
 </main>
 <script>
@@ -100,18 +120,21 @@ function showResult(ok, message) {
   el.textContent = message;
 }
 
-async function runAction(name, confirmText) {
-  if (running.has(name)) return;
-  if (confirmText && !confirm(confirmText)) return;
+// body: extra fields of the Action's JSON body (the settings form's values). Returns the reply's ok.
+async function runAction(name, confirmText, body = {}) {
+  if (running.has(name)) return false;
+  if (confirmText && !confirm(confirmText)) return false;
   running.add(name);
   poll();                                           // redraw with the button disabled
   showResult(true, 'Working…');
+  let ok = false;
   try {
     const r = await fetch('dashboard/action/' + name, {
       method: 'POST', cache: 'no-store', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({confirmed: true}),      // the server refuses a confirm Action without it
+      body: JSON.stringify({...body, confirmed: true}),   // the server refuses a confirm Action without it
     });
     const reply = await r.json().catch(() => ({ok: false, message: 'HTTP ' + r.status}));
+    ok = reply.ok;
     showResult(reply.ok, reply.message);
   } catch (e) {
     showResult(false, 'Alpaca Server not answering (' + e.message + ')');
@@ -119,6 +142,30 @@ async function runAction(name, confirmText) {
     running.delete(name);
     poll();
   }
+  return ok;
+}
+
+// The settings form (dashboard 'settings' section and Action) is not redrawn by the poll, so that
+// typing survives it: the poll fills it with the saved values only until the user edits a field.
+const form = document.getElementById('settings-form');
+let edited = false;
+form.addEventListener('input', () => { edited = true; });
+form.addEventListener('submit', async e => {
+  e.preventDefault();
+  if (await runAction('settings', '', {camera_url: form.camera_url.value, sensor_type: form.sensor_type.value}))
+    edited = false;
+});
+
+function renderSettings(s) {
+  if (!s) return;
+  if (!edited) {
+    form.camera_url.value = s.camera_url;
+    form.sensor_type.value = s.sensor_type;
+  }
+  document.getElementById('settings-save').disabled = !s.editable || running.has('settings');
+  document.getElementById('settings-note').textContent = s.editable
+    ? 'Saved to the configuration file and used at once.'
+    : `${s.locked_by.join(' and ')} Connected: disconnect in N.I.N.A. to change.`;
 }
 
 document.addEventListener('click', e => {
@@ -134,6 +181,7 @@ function render(st) {
     return `<section id="${k}"><h2>${title}</h2><dl>` +
       rows.map(([dt, dd]) => `<dt>${dt}</dt><dd>${dd}</dd>`).join('') + '</dl></section>';
   }).join('');
+  renderSettings(st.settings);
 }
 
 async function poll() {
