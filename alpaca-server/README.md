@@ -27,12 +27,11 @@ Based on the official ASCOM [AlpycaDevice](https://github.com/ASCOMInitiative/Al
 - **Subframes**: `StartX`, `NumX`, etc. are applied after download.
 - Binning is 1 only.
 - `sensor_type = 'mono'` in `config.toml` sends the same Bayer data as a monochrome sensor. N.I.N.A. 3.3 nightly's contrast-detection autofocus fails on the color image ("stride 9840 must be >= 29520"); use `mono` for daytime autofocus and `color` at night.
-- Daytime autofocus in N.I.N.A.: Contrast Detection, built-in autofocus (not Hocus Focus, which only knows star HFR), ISO 100 and 1 s (the default gain saturates in daylight).
 - No abort and no stop.
 
 Focuser:
 
-- **Absolute, positions 0..32** = lens offsets −16..+16 (`CameraEx.shiftFocusPosition`). The window is small and the steps fine: it is for refining, the rough focus is done beforehand.
+- **Absolute, positions 0..32** = lens offsets −16..+16 (`CameraEx.shiftFocusPosition`). It is for refining around a rough focus done beforehand (at 1-3 m, ±8 positions already cut sharpness by 10).
 - **Position 16 = where the lens is when the focuser is armed.** The camera freezes if an offset is sent before any autofocus since the app started, so arming is a camera autofocus, and the app refuses offsets until armed. At Connect, the server arms if the camera is not armed yet.
 - **Default arming: autofocus in `manual`, then focus mode `auto`** (`[focuser]` in `config.toml`: `arm_mode`, `drive_mode`, `arm_on_connect`). The autofocus in `manual` does not move the lens, so position 16 is the focus set by hand beforehand; in `auto` the offsets move the lens (in `manual` they are accepted but do nothing). With `arm_mode = 'auto'` the camera focuses first; an autofocus that fails (uniform target) leaves the lens about where it was.
 - Action `arm` (Parameters `manual`, `auto`, `dmf`, or empty for `arm_mode`) arms again; positions from before no longer match. Changing the focus mode on the camera between moves breaks the drive.
@@ -48,3 +47,50 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 ```
 
 NEX5R Dev must be running on the camera (it turns Wi-Fi on and joins the network itself).
+
+## N.I.N.A. autofocus
+
+### At night (star HFR, not tested on stars yet)
+
+Before the session:
+
+- `sensor_type = 'color'` in `config.toml`. If N.I.N.A. shows the "stride" error, switch to `mono`.
+- Focus by hand first: at dusk, in MF, on a very distant object or a bright star with the screen magnifier (or the camera's AF on a distant object).
+- Then connect the focuser. It arms itself (AF in `manual`, which leaves the lens alone, then `auto`): position 16 is your manual focus. Do not touch the focus ring afterwards (untested).
+- Lens wide open (f/2.8): a narrower depth of focus gives a sharper V-curve.
+
+Options → Imaging: Auto Focus = NINA or Hocus Focus (both measure star HFR).
+
+Options → Autofocus:
+
+| Setting | Value | Why |
+|---|---|---|
+| Method | Star HFR | |
+| Initial offset steps | 4 | 9 points |
+| Step size | 2 | sweep 8..24 around 16; by day ±8 cut sharpness by 10 |
+| Default exposure | 2-3 s | 1 s minimum (Bulb) |
+| Gain (ISO) | 800-1600 | lower it if bright stars saturate |
+| Binning | 1×1 | the only one |
+| Backlash | 0, method None | absolute positions; returning to 16 was repeatable |
+| Focuser settle time | 0 | a move already waits for the camera (~250 ms) |
+| Curve fitting | Hyperbolic (or Trends + Hyperbolic) | |
+| Number of attempts | 2 | |
+| Inner crop ratio | 0.6 | skips the distorted corner stars of the 30 mm |
+| Use brightest n stars | 0 (all) | |
+| Star detection | Normal or High sensitivity, no noise reduction | |
+
+With Hocus Focus, keep "Max Blind Steps Per Direction" at 8 or less, or N.I.N.A. leaves the 0..32 range.
+
+Sequencer trigger: no temperature sensor, so use "after HFR increase" (10-15 %) or "every 60-90 min".
+
+To know:
+
+- About 30 s per point (13 s of it Wi-Fi transfer): 4-5 min for 9 points.
+- Best point near 0 or 32: the range is too short. Refocus by hand, reconnect the focuser to re-arm, run the autofocus again.
+- The blur per step at infinity is not measured. After the first night run: if HFR barely changes across the sweep, use step size 3-4; if only the 2-3 central points give measurable stars, use 1.
+
+### By day (contrast, tested 2026-11-20)
+
+- Options → Imaging: Auto Focus = NINA (Hocus Focus only knows star HFR and returns 0).
+- Options → Autofocus: Contrast Detection, ISO 100, 1 s (the default gain saturates in daylight).
+- `sensor_type = 'mono'` (see Behaviour). On a textured scene at 1-3 m it converged to position 19 in about 5 min.
