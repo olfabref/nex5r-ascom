@@ -133,3 +133,26 @@ def test_release_attaches_the_checked_installer_with_its_checksum():
     upload = [line for line in script.splitlines() if 'gh release upload' in line]
     assert sums and ASSET in sums[0]
     assert upload and ASSET in upload[0] and 'SHA256SUMS' in upload[0]
+
+
+def uploads(job: dict) -> list[tuple[int, dict]]:
+    """(step index, `with`) of each upload-artifact step of a job."""
+    return [(i, step.get('with', {})) for i, step in enumerate(job['steps'])
+            if step.get('uses', '').startswith('actions/upload-artifact@')]
+
+
+def test_pr_ci_offers_the_apk_for_download():
+    # The deliverables of a PR (the release PR above all) can be tried on the hardware before merging.
+    [(_, upload)] = uploads(workflow('ci.yml')['jobs']['apk'])
+    assert upload['path'] == 'camera-app/build/nex5r.apk'
+    assert upload['if-no-files-found'] == 'error'
+
+
+def test_pr_ci_offers_the_installer_of_this_version_for_download():
+    steps = workflow('ci.yml')['jobs']['installer']['steps']
+    [(at, upload)] = uploads({'steps': steps})
+    assert upload['path'] == f'alpaca-server/dist/{ASSET}'
+    assert upload['if-no-files-found'] == 'error'
+    # Uploaded before the newer fake Version overwrites dist/.
+    bump = next(i for i, step in enumerate(steps) if step.get('name') == 'Build a newer Version of the same code')
+    assert at < bump

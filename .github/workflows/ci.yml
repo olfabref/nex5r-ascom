@@ -73,6 +73,13 @@ jobs:
         run: KEYSTORE="$RUNNER_TEMP/debug.keystore" camera-app/build.sh
       - name: Check the APK
         run: test -s camera-app/build/nex5r.apk
+      # Downloadable from the PR's run, to try it on the Camera before merging (signed with the throwaway key).
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: nex5r-apk
+          path: camera-app/build/nex5r.apk
+          if-no-files-found: error
+          retention-days: 14
 
   installer:
     name: Windows installer
@@ -91,6 +98,14 @@ jobs:
       - name: Build (PyInstaller, Inno Setup)
         shell: pwsh
         run: ./alpaca-server/installer/build.ps1
+      # Downloadable from the PR's run, to try it on the mini-PC before merging.
+      # Uploaded before the newer fake Version below overwrites dist/.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: nex5r-ascom-setup
+          path: alpaca-server/dist/nex5r-ascom-setup.exe
+          if-no-files-found: error
+          retention-days: 14
       - name: Silent install, reinstall on top, uninstall
         run: python alpaca-server/installer/check_install.py alpaca-server/dist/nex5r-ascom-setup.exe
       # The Update between two fake Releases: this build, then the same code with a newer Version,
