@@ -7,6 +7,8 @@ per section (see SECTIONS), plus the derived `version_mismatch`:
    "camera_app": {"reachable": true, "version": "0.1.0", "error": null},
    "camera":     {"connected": false, "state": "IDLE", "exposing": false},
    "focuser":    {"connected": false, "armed": false, "position": 16, "moving": false},
+   "settings":   {"camera_url": "http://192.168.0.23:8080", "sensor_type": "color", "editable": true,
+                  "locked_by": []},
    "release":    {"state": "available", "update_available": true, "current": "0.1.0", "latest": "0.2.0",
                   "url": "https://github.com/.../releases/tag/v0.2.0", "checked_at": "...", "error": null},
    "update":     {"installable": true, "state": "idle", "version": null, "message": null, "command": null},
@@ -29,6 +31,7 @@ The confirmation is asked on the page and required again here.
 import json
 import threading
 import time
+import urllib.parse
 from dataclasses import dataclass
 from logging import Logger
 from pathlib import Path
@@ -38,11 +41,12 @@ import falcon
 from falcon import App, Request, Response
 
 import camera
+import config
 import focuser
 import release
 import update
 from cameradevice import CameraState
-from config import Config
+from config import SENSOR_TYPES, Config
 from nex5r import CameraError, Nex5r
 from shr import log_request
 from version import __version__
@@ -102,6 +106,17 @@ def _focuser() -> dict:
     return {'connected': dev.connected, 'armed': dev.armed, 'position': dev.position, 'moving': dev.is_moving}
 
 
+def _connected_devices() -> list[str]:
+    return [name for name, dev in (('Camera', camera.dev), ('Focuser', focuser.dev)) if dev.connected]
+
+
+def _settings() -> dict:
+    """The settings the page can edit (the 'settings' Action); editable while no Device is Connected."""
+    locked_by = _connected_devices()
+    return {'camera_url': Config.camera_url, 'sensor_type': Config.sensor_type, 'editable': not locked_by,
+            'locked_by': locked_by}
+
+
 def _release() -> dict:
     """New Release detection (release.py): state is checking, available, up_to_date or cannot_check."""
     return release.checker.state()
@@ -119,6 +134,7 @@ SECTIONS = {
     'camera_app': _camera_app,
     'camera': _camera,
     'focuser': _focuser,
+    'settings': _settings,
     'release': _release,
     'update': _update,
 }
@@ -169,9 +185,64 @@ def _update_server(body: dict) -> str:
         raise Refused(str(e))
 
 
+EDITABLE = ('camera_url', 'sensor_type')
+
+
+def _camera_url(value) -> str:
+    url = value.strip().rstrip('/') if isinstance(value, str) else ''
+    parts = urllib.parse.urlsplit(url)
+    if parts.scheme != 'http' or not parts.hostname or parts.path or parts.query or parts.fragment:
+        raise Refused(f'{value!r} is not a camera-app address such as http://192.168.0.23:8080.')
+    try:
+        parts.port
+    except ValueError:
+        raise Refused(f'{value!r} has an invalid port.')
+    return url
+
+
+def _use_camera_url(url: str):
+    """Every client of camera-app talks to url from now on (no Device is Connected)."""
+    global _probe
+    camera.dev.cam = Nex5r(url)
+    focuser.dev.cam = Nex5r(url)
+    _probe = CameraAppProbe(url)
+
+
+def _save_settings(body: dict) -> str:
+    """camera_url and/or sensor_type from the body, saved to the configuration file and applied at
+    once. Only while no Device is Connected: N.I.N.A. reads the sensor type and talks to the Camera at
+    Connect. Every other setting is edited in the file (and needs a restart)."""
+    values = {k: v for k, v in body.items() if k != 'confirmed'}
+    others = sorted(set(values) - set(EDITABLE))
+    if others:
+        raise Refused(f'Only camera_url and sensor_type can be changed here: edit {", ".join(others)} '
+                      f'in {config.loaded_path} and restart the Alpaca Server.')
+    if not values:
+        raise Refused('Nothing to change: give camera_url and/or sensor_type.')
+    locked_by = _connected_devices()
+    if locked_by:
+        raise Refused(f'{" and ".join(locked_by)} Connected: disconnect '
+                      f'{"them" if len(locked_by) > 1 else "it"} in N.I.N.A. before changing the settings.')
+    if 'camera_url' in values:
+        values['camera_url'] = _camera_url(values['camera_url'])
+    if 'sensor_type' in values and values['sensor_type'] not in SENSOR_TYPES:
+        raise Refused(f'sensor_type must be {" or ".join(map(repr, SENSOR_TYPES))}, not {values["sensor_type"]!r}.')
+    changed = {k: v for k, v in values.items() if getattr(Config, k) != v}
+    if not changed:
+        return 'Settings unchanged.'
+    try:
+        config.save_device(**changed)
+    except OSError as e:
+        raise Refused(f'Cannot save {config.loaded_path}: {e}.')
+    if 'camera_url' in changed:
+        _use_camera_url(Config.camera_url)
+    return 'Saved: ' + ', '.join(f'{k} = {v}' for k, v in changed.items()) + '.'
+
+
 # Action name (last part of the URL, data-action of the page's button) -> Action.
 ACTIONS = {
     'arm_focuser': Action(_arm_focuser, confirm=True),
+    'settings': Action(_save_settings),
     'update': Action(_update_server, confirm=True),
 }
 
