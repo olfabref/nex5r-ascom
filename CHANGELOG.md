@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/olfabref/nex5r-ascom/compare/v0.1.0...v0.1.1) (2026-11-20)
+
+
+### Bug Fixes
+
+* **alpaca-server:** Version mismatch warning names the side to update ([#18](https://github.com/olfabref/nex5r-ascom/issues/18)) ([90ebff3](https://github.com/olfabref/nex5r-ascom/commit/90ebff31b71cc67d69a5eeea12cdf78a1aa9c0c5))
+
 ## 0.1.0 (2026-11-20)
 
 
