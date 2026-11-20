@@ -74,6 +74,26 @@ jobs:
       - name: Check the APK
         run: test -s camera-app/build/nex5r.apk
 
+  installer:
+    name: Windows installer
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: |
+            alpaca-server/requirements.txt
+            alpaca-server/installer/requirements-build.txt
+      - name: Build (PyInstaller, Inno Setup)
+        shell: pwsh
+        run: ./alpaca-server/installer/build.ps1
+      - name: Silent install, reinstall on top, uninstall
+        run: python alpaca-server/installer/check_install.py alpaca-server/dist/nex5r-ascom-setup.exe
+
   pr-title:
     name: PR title
     if: github.event_name == 'pull_request'
