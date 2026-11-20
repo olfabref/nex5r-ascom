@@ -34,6 +34,8 @@ The wizard sets squash merge only, then protects `main`: PR required, required c
 
 `.github/workflows/release.yml` runs [release-please](https://github.com/googleapis/release-please) on every push to `main`. It keeps a release PR open (`chore(main): release X.Y.Z`) with the next Version computed from the Conventional Commits (`feat:` bumps the minor before 1.0, `fix:` the patch), `CHANGELOG.md`, and that Version written into `.release-please-manifest.json`, `alpaca-server/version.py` and `camera-app/app/AndroidManifest.xml` (`release-please-config.json`). Never edit these Versions by hand: `.github/tests/test_release.py` checks that they agree.
 
+To try the deliverables on the hardware before merging the release PR, download them from its CI run (Actions → the run → Artifacts, kept 14 days): `nex5r-apk` (signed with a throwaway key, like every CI build) and `nex5r-ascom-setup` (the installer at the release PR's Version). From a terminal: `gh run download <run-id> -n nex5r-apk -n nex5r-ascom-setup`.
+
 Merging the release PR creates the `vX.Y.Z` tag and the GitHub Release; the `Windows installer` job builds and checks the installer at that tag, and the `Release assets` job builds the APK and attaches `nex5r.apk`, `nex5r-ascom-setup.exe` and `SHA256SUMS`.
 
 release-please authenticates with a fine-grained PAT in the `RELEASE_PLEASE_TOKEN` secret, so that CI (the required checks) runs on its PR: a PR opened with `GITHUB_TOKEN` triggers no workflow. The token has access to this repository only, with `Contents` and `Pull requests` read and write, and expires after one year. To create or renew it (repository admin):
