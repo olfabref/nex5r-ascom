@@ -20,6 +20,7 @@ from config import Config
 from exceptions import InvalidOperationException, InvalidValueException, ValueNotSetException
 from responders import Fail, Responders, const, not_impl, to_int
 from shr import PropertyResponse, StateValue, get_request_field, getNextTransId, to_bool
+from version import __version__
 
 logger: Logger = None
 
@@ -28,7 +29,7 @@ maxdev = 0                      # Single instance
 
 class CameraMetadata:
     Name = 'Sony NEX-5R'
-    Version = '0.1'
+    Version = __version__
     Description = 'Sony NEX-5R over Wi-Fi (camera-app on the camera, timed Bulb, ARW Bayer data)'
     DeviceType = 'Camera'
     DeviceID = '6b1f3c1e-2a7d-4f4e-9a55-5d1c0e7b9a42'
@@ -117,6 +118,8 @@ def _set_readout_mode(value: str):
 
 def _bayer(axis: int):
     def get():
+        if Config.sensor_mono:
+            _not_impl()
         if dev.bayer_offset is not None:
             return dev.bayer_offset[axis]
         return (Config.bayer_offset_x, Config.bayer_offset_y)[axis]
@@ -183,17 +186,18 @@ _DRIVER = [
     _method('CommandString', _not_impl_method, connected=False),
 ]
 
+# Config values are read at call time: app.main may load another configuration after this import.
 _CAMERA = [
     # geometry
-    _property('CameraXSize', _const(Config.sensor_x)),
-    _property('CameraYSize', _const(Config.sensor_y)),
-    _property('PixelSizeX', _const(Config.pixel_size_um)),
-    _property('PixelSizeY', _const(Config.pixel_size_um)),
+    _property('CameraXSize', lambda: Config.sensor_x),
+    _property('CameraYSize', lambda: Config.sensor_y),
+    _property('PixelSizeX', lambda: Config.pixel_size_um),
+    _property('PixelSizeY', lambda: Config.pixel_size_um),
     _property('SensorName', _const('Sony NEX-5R APS-C')),
     # RGGB; 'mono' sends the same Bayer data as monochrome (no debayering in the client)
-    _property('SensorType', _const(0 if Config.sensor_mono else 2)),
-    _property('BayerOffsetX', _not_impl if Config.sensor_mono else _bayer(0)),
-    _property('BayerOffsetY', _not_impl if Config.sensor_mono else _bayer(1)),
+    _property('SensorType', lambda: 0 if Config.sensor_mono else 2),
+    _property('BayerOffsetX', _bayer(0)),
+    _property('BayerOffsetY', _bayer(1)),
     _property('BinX', _const(1), _set_bin),
     _property('BinY', _const(1), _set_bin),
     _property('MaxBinX', _const(1)),
@@ -204,9 +208,9 @@ _CAMERA = [
     _property('NumX', lambda: _Sub.num_x, _setter('num_x')),
     _property('NumY', lambda: _Sub.num_y, _setter('num_y')),
     # pixel values
-    _property('MaxADU', _const(Config.max_adu)),
+    _property('MaxADU', lambda: Config.max_adu),
     _property('ElectronsPerADU', _const(1.0)),           # not measured
-    _property('FullWellCapacity', _const(float(Config.max_adu))),
+    _property('FullWellCapacity', lambda: float(Config.max_adu)),
     _property('ReadoutMode', _const(0), _set_readout_mode),
     _property('ReadoutModes', _const(['ARW (Bayer RAW)'])),
     _property('CanFastReadout', _const(False)),
@@ -222,8 +226,8 @@ _CAMERA = [
     _property('OffsetMin', _not_impl),
     _property('OffsetMax', _not_impl),
     # exposure
-    _property('ExposureMin', _const(Config.exposure_min)),
-    _property('ExposureMax', _const(Config.exposure_max)),
+    _property('ExposureMin', lambda: Config.exposure_min),
+    _property('ExposureMax', lambda: Config.exposure_max),
     _property('ExposureResolution', _const(0.001)),
     _property('HasShutter', _const(False)),
     _property('CanAbortExposure', _const(False)),

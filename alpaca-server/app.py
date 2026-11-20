@@ -56,30 +56,38 @@
 # 03-Jan-2025   rbd 1.1 Clarify devices vs device types at import site. Comment only,
 #               no logic changes.
 #
+import argparse                         # nex5r-ascom: --config, --no-tray
 import sys
+import threading                        # nex5r-ascom: HTTP served beside the tray icon
 import traceback
 import inspect
-from wsgiref.simple_server import WSGIRequestHandler, WSGIServer, make_server
-from socketserver import ThreadingMixIn
+from wsgiref.simple_server import WSGIRequestHandler, WSGIServer, make_server   # nex5r-ascom: WSGIServer
+from socketserver import TCPServer, ThreadingMixIn                              # nex5r-ascom: threaded server
 from enum import IntEnum
 
 # -- isort wants the above line to be blank --
 # Controller classes (for routing)
+import dashboard                        # nex5r-ascom: the Dashboard
+import release                          # nex5r-ascom: New Release detection
+import tray                             # nex5r-ascom: the tray icon
+import update                           # nex5r-ascom: the Update
 import discovery
 import exceptions
 from falcon import Request, Response, App, HTTPInternalServerError
 import management
 import setup
 import log
+import config                           # nex5r-ascom: config.load() of the chosen file
 from config import Config
 from discovery import DiscoveryResponder
 from shr import set_shr_logger
+from version import __version__         # nex5r-ascom: the Version (ADR 0001)
 
 ##############################
 # FOR EACH ASCOM DEVICE TYPE #
 ##############################
-import camera
-import focuser
+import camera                           # nex5r-ascom: the Camera device
+import focuser                          # nex5r-ascom: the Focuser device
 
 #--------------
 API_VERSION = 1
@@ -88,6 +96,13 @@ API_VERSION = 1
 class ThreadingWSGIServer(ThreadingMixIn, WSGIServer):
     """One thread per request: clients poll ImageReady while ImageArray streams (nex5r-ascom change)."""
     daemon_threads = True
+
+    def server_bind(self):
+        """HTTPServer.server_bind without socket.getfqdn(): that reverse lookup of the bound address can
+        hang for tens of seconds (GitHub macOS runners), before the socket listens (nex5r-ascom change)."""
+        TCPServer.server_bind(self)
+        self.server_name, self.server_port = self.server_address[:2]
+        self.setup_environ()
 
 
 class LoggingWSGIRequestHandler(WSGIRequestHandler):
@@ -225,8 +240,19 @@ def falcon_uncaught_exception_handler(req: Request, resp: Response, ex: BaseExce
 # ===========
 # APP STARTUP
 # ===========
-def main():
+def main(argv: list[str] | None = None):
     """ Application startup"""
+
+    # nex5r-ascom: --config PATH loads the configuration from PATH instead of the user's config.toml
+    parser = argparse.ArgumentParser(description='Sony NEX-5R Alpaca server')
+    parser.add_argument('--config', metavar='PATH',
+                        help=f'configuration file (default: {config.user_config_path()}, '
+                             'created from config-template.toml on first launch)')
+    # nex5r-ascom: --no-tray runs without the tray / menu bar icon (tests, CI)
+    parser.add_argument('--no-tray', action='store_true',
+                        help='no icon in the system tray (Windows) or the menu bar (Mac)')
+    args = parser.parse_args(argv)
+    config.load(args.config)
 
     logger = log.init_logging()
     # Share this logger throughout
@@ -234,6 +260,7 @@ def main():
     exceptions.logger = logger
     camera.start_camera_device(logger)
     focuser.start_focuser_device(logger)
+    release.start(logger)                   # nex5r-ascom: latest Release at startup, then every 6 h
     discovery.logger = logger
     set_shr_logger(logger)
 
@@ -274,6 +301,8 @@ def main():
     falc_app.add_route('/setup', setup.svrsetup())
     falc_app.add_route(f'/setup/v{API_VERSION}/camera/{{devnum}}/setup', setup.devsetup())
     falc_app.add_route(f'/setup/v{API_VERSION}/focuser/{{devnum}}/setup', setup.devsetup())
+    # nex5r-ascom: the Dashboard on the root page
+    dashboard.add_routes(falc_app, logger)
 
     #
     # Install the unhandled exception processor. See above,
@@ -286,9 +315,31 @@ def main():
     # Using the lightweight built-in Python wsgi.simple_server
     with make_server(Config.ip_address, Config.port, falc_app, server_class=ThreadingWSGIServer,
                      handler_class=LoggingWSGIRequestHandler) as httpd:
-        logger.info(f'==STARTUP== Serving on {Config.ip_address}:{Config.port}. Time stamps are UTC.')
-        # Serve until process is killed
-        httpd.serve_forever()
+        logger.info(f'==STARTUP== nex5r-ascom Alpaca Server Version {__version__}. Serving on {Config.ip_address}:{Config.port}. Time stamps are UTC.')
+        # nex5r-ascom: the Update, started from the Dashboard. Once it has launched the installer, it
+        # quits as Quit in the tray does (the Alpaca Server shuts down, the icon goes, main returns);
+        # without a tray, serve_forever returns. No request is served before this point.
+        icon = None
+
+        def quit_for_update():
+            if icon and icon.running:
+                icon.quit()
+            else:
+                httpd.shutdown()
+
+        update.start(logger, quit=quit_for_update)
+        if args.no_tray:
+            # Serve until process is killed
+            httpd.serve_forever()
+            return
+        # nex5r-ascom: the tray icon needs the main thread (AppKit on Mac); HTTP is served on another.
+        # Quit in the tray shuts the server down; without a tray, serve until the process is killed.
+        serving = threading.Thread(target=httpd.serve_forever, name='http', daemon=True)
+        serving.start()
+        icon = tray.Tray(tray.dashboard_url(Config.ip_address, Config.port), __version__,
+                         quit=httpd.shutdown, checker=release.checker, logger=logger)
+        if not icon.run():
+            serving.join()
 
 # ========================
 if __name__ == '__main__':

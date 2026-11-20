@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>nex5r-ascom Dashboard</title>
+<style>
+  :root { --bg: #fafafa; --fg: #222; --card: #fff; --line: #ddd; --muted: #777;
+          --ok: #1a7f37; --bad: #c62828; --warn-bg: #fff4ce; --warn-fg: #6b4e00; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #141414; --fg: #e6e6e6; --card: #1f1f1f; --line: #333; --muted: #999;
+            --ok: #4ac26b; --bad: #ff6b6b; --warn-bg: #3d3000; --warn-fg: #ffd866; }
+  }
+  body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg);
+         font: 15px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 640px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0 0 12px; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 8px;
+            padding: 10px 14px; margin-bottom: 10px; }
+  h2 { font-size: 15px; margin: 0 0 6px; }
+  dl { display: grid; grid-template-columns: max-content 1fr; gap: 2px 16px; margin: 0; }
+  dt { color: var(--muted); }
+  dd { margin: 0; }
+  .ok { color: var(--ok); } .bad { color: var(--bad); } .muted { color: var(--muted); }
+  .warning { background: var(--warn-bg); color: var(--warn-fg); border-radius: 8px;
+             padding: 8px 14px; margin-bottom: 10px; }
+  a { color: inherit; }
+  #updated { color: var(--muted); font-size: 13px; }
+  input, select { font: inherit; padding: 3px 6px; border-radius: 6px; border: 1px solid var(--line);
+                  background: var(--bg); color: var(--fg); max-width: 100%; box-sizing: border-box; }
+  input { width: 22em; }
+  button { font: inherit; padding: 4px 12px; border-radius: 6px; border: 1px solid var(--line);
+           background: var(--bg); color: var(--fg); cursor: pointer; }
+  button:disabled { opacity: 0.5; cursor: default; }
+  .result { border: 1px solid var(--line); border-radius: 8px; padding: 8px 14px; margin-bottom: 10px; }
+  .result.bad { border-color: var(--bad); }
+</style>
+</head>
+<body>
+<main>
+  <h1>nex5r-ascom Dashboard</h1>
+  <div id="warnings"></div>
+  <div id="result" role="status"></div>
+  <div id="sections"></div>
+  <section id="settings">
+    <h2>Settings</h2>
+    <form id="settings-form">
+      <dl>
+        <dt><label for="camera_url">Camera address</label></dt>
+        <dd><input id="camera_url" name="camera_url" type="url" required placeholder="http://192.168.0.10:8080"
+                   autocomplete="off" spellcheck="false"></dd>
+        <dt><label for="sensor_type">Sensor type</label></dt>
+        <dd><select id="sensor_type" name="sensor_type">
+          <option value="color">color (RGGB, normal use)</option>
+          <option value="mono">mono (no debayering, daytime autofocus tests)</option>
+        </select></dd>
+        <dt></dt>
+        <dd><button type="submit" id="settings-save">Save</button> <span id="settings-note" class="muted"></span></dd>
+      </dl>
+    </form>
+  </section>
+  <p id="updated">Loading…</p>
+</main>
+<script>
+// One renderer per section of GET dashboard/status: title and [label, value] rows.
+// A new section of dashboard.py needs a renderer here; unknown sections are skipped.
+const yes = (v, on, off) => v ? `<span class="ok">${on}</span>` : `<span class="bad">${off}</span>`;
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
+
+const RENDERERS = {
+  server: s => ['Alpaca Server', [['Version', esc(s.version)]]],
+  camera_app: s => ['camera-app', [
+    ['Reachable', yes(s.reachable, 'Reachable', 'not Reachable')],
+    ['Version', s.version == null ? '—' : esc(s.version)],
+  ]],
+  camera: s => ['Camera', [
+    ['Connected', yes(s.connected, 'Connected', 'not Connected')],
+    ['Exposure', s.exposing ? 'in progress (' + esc(s.state.toLowerCase()) + ')' : 'none'],
+  ]],
+  focuser: s => ['Focuser', [
+    ['Connected', yes(s.connected, 'Connected', 'not Connected')],
+    ['Armed', s.armed ? 'yes' : 'no'],
+    ['Position', esc(s.position) + ' / 32' + (s.moving ? ' (moving)' : '')],
+    ['', button('arm_focuser', 'Re-arm',
+      'Re-arm the Focuser? The lens stays where it is focused now and becomes position 16, so the ' +
+      'positions N.I.N.A. knows will no longer match: run its autofocus again afterwards.')],
+  ]],
+  release: s => ['Release', [['Latest', RELEASE_STATES[s.state] ? RELEASE_STATES[s.state](s) : esc(s.state)]]],
+  update: s => ['Update', [
+    ['State', UPDATE_STATES[s.state] ? UPDATE_STATES[s.state](s) : esc(s.state)],
+    // From the sources the button only shows the git command: nothing to confirm.
+    ['', button('update', 'Update', s.installable ?
+      'Update the Alpaca Server to the latest Release? It downloads and checks the installer, then the ' +
+      'Alpaca Server stops, installs and restarts (about a minute). The configuration is kept; camera-app is not updated.' : '')],
+  ]],
+};
+
+// update.state -> what the Update section shows (update.py).
+const UPDATE_STATES = {
+  idle: s => s.installable ? 'none' : `from the sources: <code>${esc(s.command)}</code>`,
+  downloading: s => esc(s.message),
+  installing: s => 'Update in progress…',
+  failed: s => `<span class="bad">${esc(s.message)}</span>`,
+};
+
+// While the installer runs, the Alpaca Server is gone; the next one to answer with no Update running is the
+// new one: reload the page (its dashboard.html may have changed too). A failed Update reloads nothing.
+let updating = false;
+function followUpdate(st) {
+  if (!st.update) return;
+  if (st.update.state === 'downloading' || st.update.state === 'installing') updating = true;
+  else if (updating && st.update.state === 'idle') location.reload();
+  else updating = false;
+}
+
+// release.state -> what the Release section shows. Nothing is installed automatically.
+const newRelease = s => `Version ${esc(s.latest)} available (<a href="${esc(s.url)}" target="_blank" rel="noopener">Release notes</a>)`;
+const RELEASE_STATES = {
+  checking: s => 'checking…',
+  available: s => `<span class="ok">${newRelease(s)}</span>`,
+  up_to_date: s => 'up to date',
+  cannot_check: s => `cannot check <span class="muted">(${esc(s.error ?? 'no network')})</span>`,
+};
+
+// Warnings drawn above the sections, from the whole status.
+const WARNINGS = [
+  st => st.version_mismatch &&
+    `Version mismatch: Alpaca Server ${esc(st.server.version)}, camera-app ${esc(st.camera_app.version ?? 'unknown')}. ` +
+    'Reinstall the camera-app APK of the same Release.',
+  st => st.release && st.release.update_available && `New Release: ${newRelease(st.release)}.`,
+  st => st.update && st.update.state === 'installing' &&
+    'Update in progress: the Alpaca Server restarts, this page reloads by itself.',
+];
+
+// Actions (dashboard.ACTIONS): button(name, label, confirmText) goes in a renderer's row. A click asks
+// confirmText (when given) with confirm(), then POSTs to dashboard/action/<name>; the reply's message
+// (done, or why it was refused) shows in #result until the next action. Buttons are redrawn on every
+// poll, so clicks are caught on the document, and a running action keeps its button disabled.
+const running = new Set();
+const button = (name, label, confirmText = '') =>
+  `<button type="button" data-action="${esc(name)}" data-confirm="${esc(confirmText)}"` +
+  `${running.has(name) ? ' disabled' : ''}>${esc(label)}</button>`;
+
+function showResult(ok, message) {
+  const el = document.getElementById('result');
+  el.className = 'result ' + (ok ? 'ok' : 'bad');
+  el.textContent = message;
+}
+
+// body: extra fields of the Action's JSON body (the settings form's values). Returns the reply's ok.
+async function runAction(name, confirmText, body = {}) {
+  if (running.has(name)) return false;
+  if (confirmText && !confirm(confirmText)) return false;
+  running.add(name);
+  poll();                                           // redraw with the button disabled
+  showResult(true, 'Working…');
+  let ok = false;
+  try {
+    const r = await fetch('dashboard/action/' + name, {
+      method: 'POST', cache: 'no-store', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({...body, confirmed: true}),   // the Alpaca Server refuses a confirm Action without it
+    });
+    const reply = await r.json().catch(() => ({ok: false, message: 'HTTP ' + r.status}));
+    ok = reply.ok;
+    showResult(reply.ok, reply.message);
+  } catch (e) {
+    showResult(false, 'Alpaca Server not answering (' + e.message + ')');
+  } finally {
+    running.delete(name);
+    poll();
+  }
+  return ok;
+}
+
+// The settings form (dashboard 'settings' section and Action) is not redrawn by the poll, so that
+// typing survives it: the poll fills it with the saved values only until the user edits a field.
+const form = document.getElementById('settings-form');
+let edited = false;
+form.addEventListener('input', () => { edited = true; });
+form.addEventListener('submit', async e => {
+  e.preventDefault();
+  if (await runAction('settings', '', {camera_url: form.camera_url.value, sensor_type: form.sensor_type.value}))
+    edited = false;
+});
+
+function renderSettings(s) {
+  if (!s) return;
+  if (!edited) {
+    form.camera_url.value = s.camera_url;
+    form.sensor_type.value = s.sensor_type;
+  }
+  document.getElementById('settings-save').disabled = !s.editable || running.has('settings');
+  document.getElementById('settings-note').textContent = s.editable
+    ? 'Saved to the configuration file and used at once.'
+    : `${s.locked_by.join(' and ')} Connected: disconnect in N.I.N.A. to change.`;
+}
+
+document.addEventListener('click', e => {
+  const b = e.target.closest('button[data-action]');
+  if (b && !b.disabled) runAction(b.dataset.action, b.dataset.confirm);
+});
+
+function render(st) {
+  document.getElementById('warnings').innerHTML =
+    WARNINGS.map(w => w(st)).filter(Boolean).map(t => `<div class="warning">${t}</div>`).join('');
+  document.getElementById('sections').innerHTML = Object.keys(st).filter(k => RENDERERS[k]).map(k => {
+    const [title, rows] = RENDERERS[k](st[k]);
+    return `<section id="${k}"><h2>${title}</h2><dl>` +
+      rows.map(([dt, dd]) => `<dt>${dt}</dt><dd>${dd}</dd>`).join('') + '</dl></section>';
+  }).join('');
+  renderSettings(st.settings);
+}
+
+async function poll() {
+  const updated = document.getElementById('updated');
+  try {
+    const r = await fetch('dashboard/status', {cache: 'no-store'});
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const st = await r.json();
+    render(st);
+    followUpdate(st);
+    updated.textContent = 'Updated ' + new Date().toLocaleTimeString();
+  } catch (e) {
+    updated.innerHTML = updating ? 'Update in progress: waiting for the Alpaca Server to restart…' :
+      '<span class="bad">Alpaca Server not answering</span> (' + esc(e.message) + ')';
+  }
+}
+
+poll();
+setInterval(poll, 2000);
+</script>
+</body>
+</html>

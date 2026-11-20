@@ -70,6 +70,7 @@ import json
 from falcon import Request, Response, HTTPBadRequest
 import logging
 from logging import Logger
+from version import __version__
 
 logger: Logger = None
 #logger = None                   # Safe on Python 3.7 but no intellisense in VSCode etc.
@@ -86,7 +87,7 @@ def set_shr_logger(lgr):
 # Static metadata not subject to configuration changes
 class DeviceMetadata:
     """ Metadata describing the Alpaca Device/Server """
-    Version = '0.2'
+    Version = __version__
     Description = 'Sony NEX-5R Alpaca server'
     Manufacturer = 'nex5r-ascom'
 

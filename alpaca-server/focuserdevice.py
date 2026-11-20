@@ -31,6 +31,10 @@ class FocuserDevice:
         self.is_moving = False
         self.error: str | None = None
 
+    def retarget(self, url: str):
+        """camera-app at url from now on (not while Connected)."""
+        self.cam = Nex5r(url)
+
     @property
     def max_step(self) -> int:
         return self.max_offset - self.min_offset

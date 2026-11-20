@@ -14,8 +14,48 @@ Based on the official ASCOM [AlpycaDevice](https://github.com/ASCOMInitiative/Al
 - `focuser.py`: Alpaca Focuser responders.
 - `focuserdevice.py`: positions, arming, one move at a time on a worker thread.
 - `responders.py`: the responder factories both devices share.
+- `devices.py`: the two Devices together: which are Connected, and retargeting both to a new camera-app address.
 - `nex5r.py`: HTTP client for camera-app (`/status`, `/shutter`, `/iso`, `/capture?ms=`, `/files`, `/dcim/`, `/focus`, `/focusarm`).
-- `config.toml`: the camera's address and the sensor geometry.
+- `version.py`: the Version (ADR 0001), written by release-please. Both Devices return it as `DriverVersion`, the management description as `Version`, and the startup log line names it.
+- `dashboard.py`, `dashboard.html`: the Dashboard (see Dashboard).
+- `release.py`: New Release detection (see Dashboard).
+- `update.py`: the Update (see Dashboard).
+- `tray.py`: the tray icon (see Tray icon).
+- `config-template.toml`: the template of the configuration (see Configuration).
+- `installer/`: the Windows installer (see Windows installer).
+- `tests/`: the test bench (see Tests).
+
+## Dashboard
+
+Open `http://<server address>:11111/` from any machine on the local network (with the default `ip_address = ''` the server listens on every address). The page shows whether camera-app is Reachable and its Version, whether the Camera is Connected and exposing, whether the Focuser is Connected and armed and its position (0..32), and the Alpaca Server's Version, with a warning when the two Versions differ (expected after an Update until the APK is reinstalled, ADR 0001).
+
+The page polls `GET /dashboard/status` (JSON, one key per section) every 2 s. That route asks camera-app for `/status` at most once a second, with a 1.5 s timeout, so a stopped camera-app shows as not Reachable within 2 to 4 s.
+
+**Re-arm** (Focuser section) runs an Arming, with the `arm_mode` and `drive_mode` of `config.toml`, for example after refocusing by hand when N.I.N.A.'s autofocus ends at 0 or 32. It asks for a confirmation first: the lens becomes position 16, so the positions N.I.N.A. knows no longer match (run its autofocus again). It works whether or not the Focuser is Connected, and is refused while an exposure is in progress or when camera-app does not answer; the page shows the result or the refusal above the sections.
+
+**Settings** changes the Camera's address (`camera_url`, for example on another Wi-Fi network in the field) and `sensor_type` without editing a file or restarting. Save writes them to the `config.toml` the server read (`--config` file or the user folder), changing only those two values (comments and other keys are kept), and uses them at once: the next request goes to the new address, the next Connect reports the new sensor type. It is refused while the Camera or the Focuser is Connected (disconnect in N.I.N.A. first). Every other setting is edited in the file. The poll does not overwrite a field being edited.
+
+Actions are `POST /dashboard/action/<name>` with a JSON body (`{"confirmed": true}` for an action that needs a confirmation), answering `{"ok": ..., "message": ...}`: 200 done, 409 refused now, 400 no confirmation, 404 unknown action, 415 not JSON (so a form on another site cannot trigger one).
+
+The Release section tells whether a newer Release exists. At startup, then every 6 h, the server asks the GitHub API for the latest Release (`releases/latest`: drafts and prereleases are never the latest) in a background thread, and compares its Version with its own: "Version X.Y.Z available" (also as a banner, with a link to the Release notes), "up to date" (same Version, an older one, or no Release yet), or "cannot check" (no network or a GitHub error; the server carries on normally and tries again 6 h later). Nothing is installed automatically. The environment variable `NEX5R_RELEASES_URL` replaces the GitHub API URL (the tests point it to a fake GitHub).
+
+**Update** (Update section, ADR 0002) updates the Alpaca Server to the latest Release, after a confirmation. It is refused while the Camera or the Focuser is Connected (disconnect in N.I.N.A. first), when there is no newer Release, or when GitHub cannot be reached. On Windows (the installed executable) the Alpaca Server downloads the Release's `nex5r-ascom-setup.exe` and `SHA256SUMS` into a temporary folder, checks the installer's SHA-256, launches it detached in silent mode (its log: `install.log` next to it) and quits; the installer installs and starts the new Alpaca Server, the page shows "Update in progress" and reloads itself once the new Alpaca Server answers. The configuration in the user folder is kept. A wrong SHA-256 or a failed download cancels the Update: the Alpaca Server keeps running and the section says why. From the sources (Mac) nothing is run: the button shows the command to type (`git -C <checkout> pull`), then restart the Alpaca Server. camera-app is not part of the Update: reinstall its APK of the same Release (the Version mismatch warning says so).
+
+## Tray icon
+
+While the server runs, an icon sits in the system tray (Windows) or the menu bar (Mac, from the sources): a lens with a green centre. Its tooltip and the first menu entry give the Version; **Open Dashboard** (also a double-click on Windows) opens the Dashboard in the browser, and **Quit** stops the server. When a newer Release is found (see Dashboard) the icon gets an orange badge and the menu a "Version X.Y.Z available" entry that opens the Dashboard.
+
+`app.py --no-tray` runs without the icon (the tests and CI do). When no tray can be shown (no desktop session), the server logs a warning and keeps serving without it. The icon uses pystray and Pillow (pinned in `requirements.txt`, with pyobjc on Mac).
+
+## Configuration
+
+`config.toml` (the camera's address, the sensor geometry, the focuser arming, logging) lives in the user folder, not next to the code, so that a reinstall or an Update does not overwrite it (ADR 0002):
+
+- Windows: `%APPDATA%\nex5r-ascom\config.toml`
+- Mac: `~/Library/Application Support/nex5r-ascom/config.toml`
+- Linux: `$XDG_CONFIG_HOME/nex5r-ascom/config.toml` (default `~/.config/...`)
+
+On first launch the server creates it as a copy of `config-template.toml`; after that it always reads it from there, and only the Dashboard's Settings write to it (`camera_url` and `sensor_type`, nothing else in the file changes). Edit the other settings by hand and restart the server. `app.py --help` prints the path. To start again from the template, delete it. An older `alpaca-server/config.toml` next to the code is no longer read: copy it to the user folder.
 
 ## Behaviour
 
@@ -44,9 +84,34 @@ Focuser:
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python app.py            # log in alpyca.log (and stdout)
 .venv/bin/python smoke_test.py 2   # one 2 s exposure through the Alpaca API
+.venv/bin/python app.py --config other.toml    # another configuration file instead of the user's config.toml
+.venv/bin/python app.py --no-tray               # without the menu bar icon
 ```
 
 NEX5R Dev must be running on the camera (it turns Wi-Fi on and joins the network itself).
+
+## Windows installer
+
+On Windows the server needs no Python (ADR 0002): download `nex5r-ascom-setup.exe` from the latest Release, check it against `SHA256SUMS` (`certutil -hashfile nex5r-ascom-setup.exe SHA256`) and run it. It installs for the current user only, without admin rights:
+
+- the server, frozen with PyInstaller (`onedir`, Python and rawpy included), in `%LOCALAPPDATA%\Programs\nex5r-ascom`, with its log `alpyca.log` there;
+- start at login: a shortcut in the user's Startup folder (`shell:startup`), also one in the Start menu. The server has no window: its tray icon shows it is running (see Tray icon);
+- the configuration stays in `%APPDATA%\nex5r-ascom\config.toml` (see Configuration): the installer never touches it, so a reinstall, an Update or an uninstall keeps it.
+
+The installer is not code-signed, so on first launch Windows SmartScreen shows "Windows protected your PC": click **More info**, then **Run anyway**. Check the SHA-256 first.
+
+Silent mode (used by the Update): `nex5r-ascom-setup.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART`. It stops a running server, installs, then starts the new server. Uninstall from Windows Settings > Apps, or silently with `%LOCALAPPDATA%\Programs\nex5r-ascom\unins000.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART`: it stops the server and removes the files and the start at login, not the configuration.
+
+To build it (on Windows, Python 3.12): `pwsh alpaca-server/installer/build.ps1` writes `alpaca-server/dist/nex5r-ascom-setup.exe` (PyInstaller with `installer/nex5r-ascom.spec`, then Inno Setup 6 with `installer/nex5r-ascom.iss`, installed through Chocolatey if missing). A data file that the server reads next to its code must be listed in the spec's `datas`; `.github/tests/test_installer.py` fails otherwise. CI (`Windows installer` job, on every PR and in the release workflow) runs `installer/check_install.py`: silent install, the server answers the Alpaca management API, reinstall on top keeps the configuration, uninstall removes the start at login. On PRs it then builds the same code again with a newer Version and runs `installer/check_update.py`: a local fake GitHub (`tests/fake_github.py`) serves that build as the latest Release, and the Update from the Dashboard is cancelled with a wrong SHA-256, then goes from the first build to the newer one with the configuration kept. No real Release is published.
+
+## Tests
+
+```
+.venv/bin/pip install -r requirements-dev.txt
+.venv/bin/pytest
+```
+
+No Camera needed: each test starts the Alpaca Server (`app.py --config`, or `app.py` alone with a temporary user folder) against a fake camera-app (`tests/fake_camera_app.py`, the routes of `nex5r.py` with camera-app's plain-text replies) and goes through the Alpaca API, as N.I.N.A. does. The fake serves `tests/data/sample.ARW`, a 64 x 40 DNG that rawpy decodes like an ARW (a real one is 16 MB), written by `tests/make_sample_arw.py`. The end-to-end test on the Camera stays manual: `smoke_test.py`.
 
 ## N.I.N.A. autofocus
 

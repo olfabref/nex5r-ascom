@@ -1,0 +1,17 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "bootstrap-sha": "5b82555dc94099ec9c402ecd3bd3a707ae562f2f",
+  "packages": {
+    ".": {
+      "release-type": "simple",
+      "package-name": "nex5r-ascom",
+      "include-component-in-tag": false,
+      "bump-minor-pre-major": true,
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        {"type": "generic", "path": "alpaca-server/version.py"},
+        {"type": "generic", "path": "camera-app/app/AndroidManifest.xml"}
+      ]
+    }
+  }
+}

@@ -48,6 +48,10 @@ class CameraDevice:
 
     # --- connection -------------------------------------------------------------------------
 
+    def retarget(self, url: str):
+        """camera-app at url from now on (not while Connected)."""
+        self.cam = Nex5r(url)
+
     def connect(self):
         st = self.cam.status()                    # raises CameraError when unreachable
         self.isos = self.cam.isos()
