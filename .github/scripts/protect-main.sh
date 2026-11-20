@@ -204,7 +204,7 @@ run_wizard() {
 # admins included. Run it once from the repository, as a repository admin, after the first CI run.
 # The check names must match the job names in .github/workflows/ci.yml.
 REPO="${REPO:-}"
-CHECKS=("pytest (ubuntu-latest)" "pytest (windows-latest)" "pytest (macos-latest)" "camera-app APK" "PR title")
+CHECKS=("pytest (ubuntu-latest)" "pytest (windows-latest)" "pytest (macos-latest)" "camera-app APK" "Windows installer" "PR title")
 
 TOTAL_STAGES=5
 
