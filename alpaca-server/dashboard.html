@@ -21,9 +21,10 @@
   dl { display: grid; grid-template-columns: max-content 1fr; gap: 2px 16px; margin: 0; }
   dt { color: var(--muted); }
   dd { margin: 0; }
-  .ok { color: var(--ok); } .bad { color: var(--bad); }
+  .ok { color: var(--ok); } .bad { color: var(--bad); } .muted { color: var(--muted); }
   .warning { background: var(--warn-bg); color: var(--warn-fg); border-radius: 8px;
              padding: 8px 14px; margin-bottom: 10px; }
+  a { color: inherit; }
   #updated { color: var(--muted); font-size: 13px; }
 </style>
 </head>
@@ -55,6 +56,16 @@ const RENDERERS = {
     ['Armed', s.armed ? 'yes' : 'no'],
     ['Position', esc(s.position) + ' / 32' + (s.moving ? ' (moving)' : '')],
   ]],
+  release: s => ['Release', [['Latest', RELEASE_STATES[s.state] ? RELEASE_STATES[s.state](s) : esc(s.state)]]],
+};
+
+// release.state -> what the Release section shows. Nothing is installed automatically.
+const newRelease = s => `Version ${esc(s.latest)} available (<a href="${esc(s.url)}" target="_blank" rel="noopener">Release notes</a>)`;
+const RELEASE_STATES = {
+  checking: s => 'checking…',
+  available: s => `<span class="ok">${newRelease(s)}</span>`,
+  up_to_date: s => 'up to date',
+  cannot_check: s => `cannot check <span class="muted">(${esc(s.error ?? 'no network')})</span>`,
 };
 
 // Warnings drawn above the sections, from the whole status.
@@ -62,6 +73,7 @@ const WARNINGS = [
   st => st.version_mismatch &&
     `Version mismatch: Alpaca Server ${esc(st.server.version)}, camera-app ${esc(st.camera_app.version ?? 'unknown')}. ` +
     'Reinstall the camera-app APK of the same Release.',
+  st => st.release && st.release.update_available && `New Release: ${newRelease(st.release)}.`,
 ];
 
 function render(st) {

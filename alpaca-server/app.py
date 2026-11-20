@@ -67,6 +67,7 @@ from enum import IntEnum
 # -- isort wants the above line to be blank --
 # Controller classes (for routing)
 import dashboard
+import release
 import discovery
 import exceptions
 from falcon import Request, Response, App, HTTPInternalServerError
@@ -253,6 +254,7 @@ def main(argv: list[str] | None = None):
     exceptions.logger = logger
     camera.start_camera_device(logger)
     focuser.start_focuser_device(logger)
+    release.start(logger)                   # nex5r-ascom: latest Release at startup, then every 6 h
     discovery.logger = logger
     set_shr_logger(logger)
 
