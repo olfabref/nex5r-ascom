@@ -20,6 +20,8 @@ No Gradle: the old Android Gradle plugin and jcenter no longer work. `build.sh` 
 
 On the camera: Menu → Application → **NEX5R Dev**. The trash button exits.
 
+The Version is `android:versionName` in `app/AndroidManifest.xml`, written by release-please (ADR 0001); `build.sh` derives `versionCode` from it. The app returns it as the first line of `/status` (`version=X.Y.Z`). Released APKs are attached to each GitHub Release, with `SHA256SUMS`.
+
 ## Debugging
 
 The camera restarts its Android side whenever an app starts or exits, which wipes logcat and drops Wi-Fi/adb. The app logs to `NEX5R/LOG.TXT` on the SD card instead. Read it over adb while NEX5R Dev runs (the app turns Wi-Fi on and starts adbd itself; adb stops when the app exits):

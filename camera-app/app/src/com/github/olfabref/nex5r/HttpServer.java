@@ -18,7 +18,7 @@ import java.util.Comparator;
 /**
  * Minimal HTTP/1.0 server for the feasibility test: can the Mac drive a capture and fetch the ARW over Wi-Fi?
  *
- *   GET /status             camera state (text)
+ *   GET /status             camera state (text); the first line is version=X.Y.Z (the Version)
  *   GET /capture?ms=N|seconds=N[&method=normal|burstable|direct|dnormal|dburst|afnormal|afburst][&af=1]
  *                           timed Bulb exposure (the shutter must already be on BULB), see BulbTest
  *   GET /shutter?dir=slower|faster  one shutter speed step

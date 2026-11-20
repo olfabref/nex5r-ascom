@@ -353,6 +353,15 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
         return CameraEx.open(0, o);
     }
 
+    /** The Version (X.Y.Z, shared with the Alpaca Server): the APK's versionName. */
+    private String version() {
+        try {
+            return getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+        } catch (Throwable t) {
+            return "unknown";
+        }
+    }
+
     /** Turns Wi-Fi on (starting an app drops it) and starts the HTTP server; the IP shows on screen. */
     private void startNetwork() {
         try {
@@ -363,7 +372,7 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
         }
         http = new HttpServer(new HttpServer.Api() {
             public String status() {
-                return "ip=" + ip + "\n" + bulb.state() + focus.state();
+                return "version=" + version() + "\nip=" + ip + "\n" + bulb.state() + focus.state();
             }
 
             public String focus(int offset) {

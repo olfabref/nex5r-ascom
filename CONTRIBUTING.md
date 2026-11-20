@@ -28,3 +28,15 @@ CI logs are public and PRs may come from forks. Workflows run on `pull_request` 
 ```
 
 The wizard sets squash merge only, then protects `main`: PR required, required checks up to date, linear history, no force push or deletion, enforced for admins (no bypass). Run it after CI has run at least once on a PR. If a CI job is renamed, update `CHECKS` in the script and re-run it.
+
+## Releases
+
+`.github/workflows/release.yml` runs [release-please](https://github.com/googleapis/release-please) on every push to `main`. It keeps a release PR open (`chore(main): release X.Y.Z`) with the next Version computed from the Conventional Commits (`feat:` bumps the minor before 1.0, `fix:` the patch), `CHANGELOG.md`, and that Version written into `.release-please-manifest.json`, `alpaca-server/version.py` and `camera-app/app/AndroidManifest.xml` (`release-please-config.json`). Never edit these Versions by hand: `.github/tests/test_release.py` checks that they agree.
+
+Merging the release PR creates the `vX.Y.Z` tag and the GitHub Release; the `Release assets` job then builds the APK at that tag and attaches `nex5r.apk` and `SHA256SUMS`.
+
+release-please authenticates with a fine-grained PAT in the `RELEASE_PLEASE_TOKEN` secret, so that CI (the required checks) runs on its PR: a PR opened with `GITHUB_TOKEN` triggers no workflow. The token has access to this repository only, with `Contents` and `Pull requests` read and write, and expires after one year. To create or renew it (repository admin):
+
+```sh
+.github/scripts/release-please-token.sh
+```

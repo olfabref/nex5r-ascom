@@ -76,6 +76,7 @@ import config
 from config import Config
 from discovery import DiscoveryResponder
 from shr import set_shr_logger
+from version import __version__
 
 ##############################
 # FOR EACH ASCOM DEVICE TYPE #
@@ -296,7 +297,7 @@ def main(argv: list[str] | None = None):
     # Using the lightweight built-in Python wsgi.simple_server
     with make_server(Config.ip_address, Config.port, falc_app, server_class=ThreadingWSGIServer,
                      handler_class=LoggingWSGIRequestHandler) as httpd:
-        logger.info(f'==STARTUP== Serving on {Config.ip_address}:{Config.port}. Time stamps are UTC.')
+        logger.info(f'==STARTUP== nex5r-ascom Alpaca Server Version {__version__}. Serving on {Config.ip_address}:{Config.port}. Time stamps are UTC.')
         # Serve until process is killed
         httpd.serve_forever()
 
