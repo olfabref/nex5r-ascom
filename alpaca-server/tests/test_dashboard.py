@@ -30,6 +30,7 @@ def test_reports_camera_app_reachable_and_both_versions(alpaca):
     assert st['camera_app']['reachable'] is True
     assert st['camera_app']['version'] == SERVER_VERSION
     assert st['version_mismatch'] is False
+    assert st['version_behind'] is None
 
 
 def test_stopping_camera_app_turns_it_not_reachable_within_2_s(alpaca, camera_app):
@@ -76,6 +77,22 @@ def test_a_different_camera_app_version_is_a_mismatch(alpaca, camera_app):
     st = status(alpaca)
     assert st['camera_app']['version'] == '0.0.1-other'
     assert st['version_mismatch'] is True
+    assert st['version_behind'] == 'camera_app'      # older than the Alpaca Server: reinstall the APK
+
+
+def test_a_newer_camera_app_puts_the_alpaca_server_behind(alpaca, camera_app):
+    camera_app.camera.version = '99.0.0'
+    time.sleep(1.1)
+    st = status(alpaca)
+    assert st['version_mismatch'] is True
+    assert st['version_behind'] == 'alpaca_server'   # update the Alpaca Server, not the APK
+
+
+def test_the_warning_names_what_to_update(alpaca):
+    page = get(alpaca, '/')[1].decode('utf-8')
+    assert "alpaca_server: st => 'Update the Alpaca Server to " in page
+    assert "camera_app: st => 'Reinstall the camera-app APK of " in page
+    assert 'BEHIND[st.version_behind](st)' in page
 
 
 def test_root_page_is_the_dashboard_and_polls_the_json_route_by_a_relative_url(alpaca):

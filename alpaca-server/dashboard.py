@@ -12,7 +12,7 @@ per section (see SECTIONS), plus the derived `version_mismatch`:
    "release":    {"state": "available", "update_available": true, "current": "0.1.0", "latest": "0.2.0",
                   "url": "https://github.com/.../releases/tag/v0.2.0", "checked_at": "...", "error": null},
    "update":     {"installable": true, "state": "idle", "version": null, "message": null, "command": null},
-   "version_mismatch": false}
+   "version_mismatch": false, "version_behind": null}
 
 To show something new, add a section function to SECTIONS (and a renderer to dashboard.html).
 
@@ -149,7 +149,20 @@ def status() -> dict:
     app = out['camera_app']
     # Only known when camera-app answers; an old camera-app without a Version is a mismatch too.
     out['version_mismatch'] = app['reachable'] and app['version'] != out['server']['version']
+    out['version_behind'] = _behind(out['server']['version'], app['version']) if out['version_mismatch'] else None
     return out
+
+
+def _behind(server: str, camera_app: str | None) -> str:
+    """Which side of a Version mismatch is older: 'alpaca_server' or 'camera_app'. A camera-app with no
+    or an unreadable Version counts as older, since it predates the shared Version (ADR 0001)."""
+    def parse(v: str | None) -> tuple[int, ...] | None:
+        try:
+            return tuple(int(n) for n in v.split('-')[0].split('.'))
+        except (AttributeError, ValueError):
+            return None
+    s, c = parse(server), parse(camera_app)
+    return 'alpaca_server' if s is not None and c is not None and s < c else 'camera_app'
 
 
 @dataclass(frozen=True)

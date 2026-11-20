@@ -122,11 +122,17 @@ const RELEASE_STATES = {
   cannot_check: s => `cannot check <span class="muted">(${esc(s.error ?? 'no network')})</span>`,
 };
 
+// version_behind -> what to do about a Version mismatch: update whichever side is older.
+const BEHIND = {
+  alpaca_server: st => 'Update the Alpaca Server to ' + esc(st.camera_app.version) + ' (Update section, or the Release installer).',
+  camera_app: st => 'Reinstall the camera-app APK of ' + esc(st.server.version) + ' (same Release as the Alpaca Server).',
+};
+
 // Warnings drawn above the sections, from the whole status.
 const WARNINGS = [
   st => st.version_mismatch &&
     `Version mismatch: Alpaca Server ${esc(st.server.version)}, camera-app ${esc(st.camera_app.version ?? 'unknown')}. ` +
-    'Reinstall the camera-app APK of the same Release.',
+    BEHIND[st.version_behind](st),
   st => st.release && st.release.update_available && `New Release: ${newRelease(st.release)}.`,
   st => st.update && st.update.state === 'installing' &&
     'Update in progress: the Alpaca Server restarts, this page reloads by itself.',
