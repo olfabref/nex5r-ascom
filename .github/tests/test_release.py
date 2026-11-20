@@ -32,6 +32,12 @@ def test_manifest_holds_a_version():
     assert SEMVER.fullmatch(manifest_version())
 
 
+def test_the_first_release_is_0_1_0():
+    # Without initial-version, release-please makes the first release 1.0.0, whatever the manifest says.
+    config = json.loads(read('release-please-config.json'))
+    assert config['packages']['.']['initial-version'] == '0.1.0'
+
+
 def test_the_server_and_camera_app_versions_are_rewritten_by_release_please():
     assert set(extra_files()) == {'alpaca-server/version.py', 'camera-app/app/AndroidManifest.xml'}
 
