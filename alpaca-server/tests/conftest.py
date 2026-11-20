@@ -1,6 +1,7 @@
 """Test bench: the Alpaca Server runs as a real process (app.py --config ...) against a fake camera-app,
 and the tests talk to it through the Alpaca API, as N.I.N.A. does."""
 import json
+import signal
 import socket
 import subprocess
 import sys
@@ -102,7 +103,8 @@ class AlpacaServer:
         self.port = int(next(line.split('=')[1] for line in config.read_text().splitlines()
                              if line.startswith('port')))
         option = ['--config', str(config)] if use_option else []
-        self.proc = subprocess.Popen([sys.executable, str(SERVER_DIR / 'app.py'), *option],
+        # -X faulthandler: SIGABRT on a hung start dumps every thread's stack to stderr (see below).
+        self.proc = subprocess.Popen([sys.executable, '-X', 'faulthandler', str(SERVER_DIR / 'app.py'), *option],
                                      cwd=cwd, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
         self.client = Alpaca(f'http://127.0.0.1:{self.port}')
         deadline = time.monotonic() + 15
@@ -114,8 +116,14 @@ class AlpacaServer:
                     return
             except OSError:
                 time.sleep(0.1)
+        if hasattr(signal, 'SIGABRT') and sys.platform != 'win32':
+            self.proc.send_signal(signal.SIGABRT)     # faulthandler prints where the start is stuck
+            try:
+                self.proc.wait(5)
+            except subprocess.TimeoutExpired:
+                pass
         self.stop()
-        raise RuntimeError('Alpaca Server did not start')
+        raise RuntimeError(f'Alpaca Server did not start within 15 s, stderr:\n{self.proc.stderr.read().decode()}')
 
     def stop(self):
         self.proc.terminate()
