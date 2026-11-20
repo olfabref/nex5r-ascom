@@ -46,7 +46,7 @@ class Nex5r:
         """Supported ISO values, without 0 (ISO Auto, which the camera does list in M)."""
         raw = self.status().get('isos', '')
         try:
-            return [i for i in (int(v) for v in raw.split(',') if v.strip()) if i > 0]
+            return sorted(i for i in (int(v) for v in raw.split(",") if v.strip()) if i > 0)
         except ValueError:
             raise CameraError(f'unexpected isos value {raw!r}')
 

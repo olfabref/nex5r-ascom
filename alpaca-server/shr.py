@@ -68,6 +68,7 @@ from threading import Lock
 from exceptions import Success
 import json
 from falcon import Request, Response, HTTPBadRequest
+import logging
 from logging import Logger
 
 logger: Logger = None
@@ -149,7 +150,8 @@ def log_request(req: Request):
     msg = f'{req.remote_addr} -> {req.method} {req.path}'
     if req.query_string != '':
         msg += f'?{req.query_string}'
-    logger.info(msg)
+    # nex5r-ascom: GETs are the client's polling (every ~2 s from N.I.N.A.): DEBUG only
+    logger.log(logging.DEBUG if req.method == 'GET' else logging.INFO, msg)
     if req.method == 'PUT' and req.content_length != 0:
         logger.info(f'{req.remote_addr} -> {req.media}')
 
@@ -236,7 +238,7 @@ class PropertyResponse():
         self.ClientTransactionID = int(get_request_field('ClientTransactionID', req, False, 0))  #Caseless on GET
         if err.Number == 0 and not value is None:
             self.Value = value
-            logger.info(f'{req.remote_addr} <- {str(value)}')
+            logger.debug(f'{req.remote_addr} <- {str(value)}')    # nex5r-ascom: polling, DEBUG
         self.ErrorNumber = err.Number
         self.ErrorMessage = err.Message
 

@@ -19,7 +19,7 @@ Based on the official ASCOM [AlpycaDevice](https://github.com/ASCOMInitiative/Al
 - **Every exposure is a timed Bulb.** The mode dial must be on **M**. Before each exposure the server steps the shutter speed down until Bulb (`65535/1`).
 - `ExposureMin` is 1 s.
 - No shutter control: darks need the lens cap.
-- **Gain = ISO**, as an index into `Gains` (the list comes from the camera).
+- **Gain = ISO**, in value mode: `GainMin`..`GainMax` from the camera, any value snapped to the nearest supported ISO. (List mode would make N.I.N.A. show indices.)
 - **Image**: Bayer data of the ARW (`raw_image_visible`), RGGB, with `BayerOffset` derived from the file. Allow about 13 s of Wi-Fi transfer per image.
 - **Subframes**: `StartX`, `NumX`, etc. are applied after download.
 - Binning is 1 only.

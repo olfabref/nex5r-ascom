@@ -22,7 +22,7 @@ exposure_max = 3600.0
 file_timeout = 30.0         # seconds after closing to wait for the ARW on the card
 
 [logging]
-log_level = 'INFO'
+log_level = 'INFO'          # 'DEBUG' also logs every GET (the client's polling) and its value
 log_to_stdout = true
 max_size_mb = 5
 num_keep_logs = 10

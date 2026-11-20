@@ -33,7 +33,7 @@ def call(method: str, name: str, **fields):
 
 
 call('PUT', 'connected', Connected='true')
-for p in ('cameraxsize', 'cameraysize', 'sensortype', 'gains', 'gain', 'exposuremin'):
+for p in ('cameraxsize', 'cameraysize', 'sensortype', 'gainmin', 'gainmax', 'gain', 'exposuremin'):
     print(f'{p} = {call("GET", p)}')
 
 t0 = time.monotonic()

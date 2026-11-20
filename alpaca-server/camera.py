@@ -151,15 +151,25 @@ def _setter(attr: str):
     return set_
 
 
-def _gains():
-    return [f'ISO {v}' for v in dev.isos]
+def _isos() -> list[int]:
+    if not dev.isos:
+        raise Fail(InvalidOperationException('the camera reported no ISO values'))
+    return dev.isos
+
+
+def _gain():
+    return _isos()[dev.gain_index]
 
 
 def _set_gain(value: str):
+    """Gain value mode: the ISO itself, snapped to the nearest supported ISO (in stops)."""
     v = _int(value)
-    if not 0 <= v < len(dev.isos):
-        raise Fail(InvalidValueException(f'Gain index {v} out of 0..{len(dev.isos) - 1}'))
-    dev.gain_index = v
+    isos = _isos()
+    if not isos[0] <= v <= isos[-1]:
+        raise Fail(InvalidValueException(f'Gain {v} out of {isos[0]}..{isos[-1]} (ISO)'))
+    dev.gain_index = min(range(len(isos)), key=lambda i: abs(np.log2(isos[i] / v)))
+    if isos[dev.gain_index] != v:
+        logger.info(f'[camera] Gain {v} -> ISO {isos[dev.gain_index]}')
 
 
 def _set_readout_mode(value: str):
@@ -262,11 +272,12 @@ _CAMERA = [
     _property('ReadoutModes', _const(['ARW (Bayer RAW)'])),
     _property('CanFastReadout', _const(False)),
     _property('FastReadout', _not_impl, lambda v: _not_impl()),
-    # gain = ISO, as an index into Gains
-    _property('Gains', _gains),
-    _property('Gain', lambda: dev.gain_index, _set_gain),
-    _property('GainMin', _not_impl),
-    _property('GainMax', _not_impl),
+    # gain = ISO, in value mode (GainMin/GainMax). List mode (Gains) would make N.I.N.A. show
+    # indices 0..n instead of ISO values: it maps gain names to their index.
+    _property('Gains', _not_impl),
+    _property('Gain', _gain, _set_gain),
+    _property('GainMin', lambda: _isos()[0]),
+    _property('GainMax', lambda: _isos()[-1]),
     _property('Offset', _not_impl, lambda v: _not_impl()),
     _property('Offsets', _not_impl),
     _property('OffsetMin', _not_impl),
