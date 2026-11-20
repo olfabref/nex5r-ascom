@@ -63,6 +63,14 @@ def test_pyinstaller_bundles_every_file_the_server_reads_next_to_its_code():
         assert re.search(rf"""\([^()'"]*['"][^'"]*{re.escape(name)}['"]\s*,\s*['"]\.['"]\s*\)""", spec), name
 
 
+def test_pyinstaller_bundles_the_windows_tray_icon_backend():
+    # tray.py imports pystray lazily, and pystray picks its backend module at run time
+    spec = read(INSTALLER / 'nex5r-ascom.spec')
+    hidden = re.search(r'hiddenimports\s*=\s*\[([^\]]*)\]', spec)
+    assert hidden and "'pystray._win32'" in hidden.group(1)
+    assert 'pystray' in read(SERVER / 'requirements.txt')
+
+
 def test_installer_is_per_user_without_admin_rights():
     assert iss_setup('PrivilegesRequired') == 'lowest'
     assert iss_setup('DefaultDirName').startswith('{localappdata}')

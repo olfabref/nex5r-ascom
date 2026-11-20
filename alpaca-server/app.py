@@ -58,6 +58,7 @@
 #
 import argparse
 import sys
+import threading
 import traceback
 import inspect
 from wsgiref.simple_server import WSGIRequestHandler, WSGIServer, make_server
@@ -68,6 +69,7 @@ from enum import IntEnum
 # Controller classes (for routing)
 import dashboard
 import release
+import tray
 import discovery
 import exceptions
 from falcon import Request, Response, App, HTTPInternalServerError
@@ -245,6 +247,9 @@ def main(argv: list[str] | None = None):
     parser.add_argument('--config', metavar='PATH',
                         help=f'configuration file (default: {config.user_config_path()}, '
                              'created from config-template.toml on first launch)')
+    # nex5r-ascom: --no-tray runs without the tray / menu bar icon (tests, CI)
+    parser.add_argument('--no-tray', action='store_true',
+                        help='no icon in the system tray (Windows) or the menu bar (Mac)')
     args = parser.parse_args(argv)
     config.load(args.config)
 
@@ -310,8 +315,18 @@ def main(argv: list[str] | None = None):
     with make_server(Config.ip_address, Config.port, falc_app, server_class=ThreadingWSGIServer,
                      handler_class=LoggingWSGIRequestHandler) as httpd:
         logger.info(f'==STARTUP== nex5r-ascom Alpaca Server Version {__version__}. Serving on {Config.ip_address}:{Config.port}. Time stamps are UTC.')
-        # Serve until process is killed
-        httpd.serve_forever()
+        if args.no_tray:
+            # Serve until process is killed
+            httpd.serve_forever()
+            return
+        # nex5r-ascom: the tray icon needs the main thread (AppKit on Mac); HTTP is served on another.
+        # Quit in the tray shuts the server down; without a tray, serve until the process is killed.
+        serving = threading.Thread(target=httpd.serve_forever, name='http', daemon=True)
+        serving.start()
+        icon = tray.Tray(tray.dashboard_url(Config.ip_address, Config.port), __version__,
+                         quit=httpd.shutdown, checker=release.checker, logger=logger)
+        if not icon.run():
+            serving.join()
 
 # ========================
 if __name__ == '__main__':

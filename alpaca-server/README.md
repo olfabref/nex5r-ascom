@@ -18,6 +18,7 @@ Based on the official ASCOM [AlpycaDevice](https://github.com/ASCOMInitiative/Al
 - `version.py`: the Version (ADR 0001), written by release-please. Both Devices return it as `DriverVersion`, the management description as `Version`, and the startup log line names it.
 - `dashboard.py`, `dashboard.html`: the Dashboard (see Dashboard).
 - `release.py`: New Release detection (see Dashboard).
+- `tray.py`: the tray icon (see Tray icon).
 - `config-template.toml`: the template of the configuration (see Configuration).
 - `installer/`: the Windows installer (see Windows installer).
 - `tests/`: the test bench (see Tests).
@@ -29,6 +30,12 @@ Open `http://<server address>:11111/` from any machine on the local network (wit
 The page polls `GET /dashboard/status` (JSON, one key per section) every 2 s. That route asks camera-app for `/status` at most once a second, with a 1.5 s timeout, so a stopped camera-app shows as not Reachable within 2 to 4 s.
 
 The Release section tells whether a newer Release exists. At startup, then every 6 h, the server asks the GitHub API for the latest Release (`releases/latest`: drafts and prereleases are never the latest) in a background thread, and compares its Version with its own: "Version X.Y.Z available" (also as a banner, with a link to the Release notes), "up to date" (same Version, an older one, or no Release yet), or "cannot check" (no network or a GitHub error; the server carries on normally and tries again 6 h later). Nothing is installed automatically. The environment variable `NEX5R_RELEASES_URL` replaces the GitHub API URL (the tests point it to a fake GitHub).
+
+## Tray icon
+
+While the server runs, an icon sits in the system tray (Windows) or the menu bar (Mac, from the sources): a lens with a green centre. Its tooltip and the first menu entry give the Version; **Open Dashboard** (also a double-click on Windows) opens the Dashboard in the browser, and **Quit** stops the server. When a newer Release is found (see Dashboard) the icon gets an orange badge and the menu a "Version X.Y.Z available" entry that opens the Dashboard.
+
+`app.py --no-tray` runs without the icon (the tests and CI do). When no tray can be shown (no desktop session), the server logs a warning and keeps serving without it. The icon uses pystray and Pillow (pinned in `requirements.txt`, with pyobjc on Mac).
 
 ## Configuration
 
@@ -68,6 +75,7 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python app.py            # log in alpyca.log (and stdout)
 .venv/bin/python smoke_test.py 2   # one 2 s exposure through the Alpaca API
 .venv/bin/python app.py --config other.toml    # another configuration file instead of the user's config.toml
+.venv/bin/python app.py --no-tray               # without the menu bar icon
 ```
 
 NEX5R Dev must be running on the camera (it turns Wi-Fi on and joins the network itself).
@@ -77,7 +85,7 @@ NEX5R Dev must be running on the camera (it turns Wi-Fi on and joins the network
 On Windows the server needs no Python (ADR 0002): download `nex5r-ascom-setup.exe` from the latest Release, check it against `SHA256SUMS` (`certutil -hashfile nex5r-ascom-setup.exe SHA256`) and run it. It installs for the current user only, without admin rights:
 
 - the server, frozen with PyInstaller (`onedir`, Python and rawpy included), in `%LOCALAPPDATA%\Programs\nex5r-ascom`, with its log `alpyca.log` there;
-- start at login: a shortcut in the user's Startup folder (`shell:startup`), also one in the Start menu. The server has no window: open the Dashboard to see it running;
+- start at login: a shortcut in the user's Startup folder (`shell:startup`), also one in the Start menu. The server has no window: its tray icon shows it is running (see Tray icon);
 - the configuration stays in `%APPDATA%\nex5r-ascom\config.toml` (see Configuration): the installer never touches it, so a reinstall, an Update or an uninstall keeps it.
 
 The installer is not code-signed, so on first launch Windows SmartScreen shows "Windows protected your PC": click **More info**, then **Run anyway**. Check the SHA-256 first.
