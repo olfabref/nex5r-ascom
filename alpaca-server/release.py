@@ -70,13 +70,14 @@ def is_newer(version: str, than: str) -> bool:
     return parse_version(version) > parse_version(than)
 
 
+def http_request(url: str, headers: dict | None = None) -> urllib.request.Request:
+    """A GET of url with this program's User-Agent (GitHub refuses requests without one)."""
+    return urllib.request.Request(url, headers={'User-Agent': f'nex5r-ascom/{__version__}', **(headers or {})})
+
+
 def latest_release(url: str = RELEASES_URL, timeout: float = TIMEOUT) -> Release | None:
     """The latest Release on GitHub, or None when the repository has none yet; ReleaseError otherwise."""
-    req = urllib.request.Request(url, headers={
-        'Accept': 'application/vnd.github+json',
-        'X-GitHub-Api-Version': '2022-11-28',
-        'User-Agent': f'nex5r-ascom/{__version__}',
-    })
+    req = http_request(url, {'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28'})
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
             body = json.loads(r.read())

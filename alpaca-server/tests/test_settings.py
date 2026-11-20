@@ -4,7 +4,10 @@ import pytest
 
 from conftest import SERVER_DIR, AlpacaServer
 from fake_camera_app import FakeCameraApp
+from test_camera import wait_image_ready
 from test_dashboard import action, get, status
+
+NOT_IMPLEMENTED = 0x400           # ASCOM Alpaca error number
 
 
 @pytest.fixture
@@ -84,17 +87,29 @@ def test_changes_are_refused_while_a_device_is_connected(alpaca, camera_app, oth
     assert alpaca.get('camera', 'sensortype') == 2
 
 
+def expose(alpaca):
+    body = alpaca.put('camera', 'startexposure', Duration=1.0, Light='true')
+    assert body['ErrorNumber'] == 0, body['ErrorMessage']
+    wait_image_ready(alpaca)
+
+
 def test_sensor_type_applies_to_the_next_exposure(alpaca, tmp_path):
     code, reply = action(alpaca, 'settings', sensor_type='mono')
     assert code == 200, reply
     assert "sensor_type = 'mono'" in config_file(tmp_path).read_text()
     assert alpaca.put('camera', 'connected', Connected='true')['ErrorNumber'] == 0
+    expose(alpaca)
     assert alpaca.get('camera', 'sensortype') == 0          # monochrome: N.I.N.A. does not debayer
+    for axis in ('bayeroffsetx', 'bayeroffsety'):           # and asks for no Bayer pattern
+        assert alpaca.call('GET', f'/api/v1/camera/0/{axis}')['ErrorNumber'] == NOT_IMPLEMENTED
     assert alpaca.put('camera', 'connected', Connected='false')['ErrorNumber'] == 0
 
     assert action(alpaca, 'settings', sensor_type='color')[0] == 200
     assert alpaca.put('camera', 'connected', Connected='true')['ErrorNumber'] == 0
+    expose(alpaca)
     assert alpaca.get('camera', 'sensortype') == 2          # RGGB
+    # GRBG in sample.ARW: the exposure's own Bayer offset
+    assert (alpaca.get('camera', 'bayeroffsetx'), alpaca.get('camera', 'bayeroffsety')) == (1, 0)
 
 
 def test_page_has_a_form_for_the_two_settings_only(alpaca):
@@ -115,7 +130,7 @@ def test_saving_the_shipped_config_changes_only_the_two_values(tmp_path, newline
 
     config.save_device(camera_url='http://10.0.0.7:8080', sensor_type='mono')
 
-    expected = template.replace("camera_url = 'http://192.168.0.23:8080'   #",
+    expected = template.replace("camera_url = 'http://192.168.0.10:8080'   #",
                                 "camera_url = 'http://10.0.0.7:8080'   #").replace(
                                 "sensor_type = 'color'       #", "sensor_type = 'mono'       #")
     assert path.read_bytes() == expected.replace('\n', newline).encode('utf-8')
@@ -127,8 +142,8 @@ def test_saving_the_shipped_config_changes_only_the_two_values(tmp_path, newline
 @pytest.mark.parametrize('body, why', [
     ({'location': 'Field'}, 'Only camera_url and sensor_type'),
     ({'camera_url': 'http://10.0.0.5:8080', 'port': 1}, 'Only camera_url and sensor_type'),
-    ({'camera_url': '192.168.0.23:8080'}, 'is not a camera-app address'),
-    ({'camera_url': 'http://192.168.0.23:8080/status'}, 'is not a camera-app address'),
+    ({'camera_url': '192.168.0.10:8080'}, 'is not a camera-app address'),
+    ({'camera_url': 'http://192.168.0.10:8080/status'}, 'is not a camera-app address'),
     ({'camera_url': 42}, 'is not a camera-app address'),
     ({'sensor_type': 'rgb'}, "sensor_type must be 'color' or 'mono'"),
     ({}, 'Nothing to change'),

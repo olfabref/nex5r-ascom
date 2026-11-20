@@ -47,7 +47,7 @@
     <form id="settings-form">
       <dl>
         <dt><label for="camera_url">Camera address</label></dt>
-        <dd><input id="camera_url" name="camera_url" type="url" required placeholder="http://192.168.0.23:8080"
+        <dd><input id="camera_url" name="camera_url" type="url" required placeholder="http://192.168.0.10:8080"
                    autocomplete="off" spellcheck="false"></dd>
         <dt><label for="sensor_type">Sensor type</label></dt>
         <dd><select id="sensor_type" name="sensor_type">
@@ -91,7 +91,7 @@ const RENDERERS = {
     // From the sources the button only shows the git command: nothing to confirm.
     ['', button('update', 'Update', s.installable ?
       'Update the Alpaca Server to the latest Release? It downloads and checks the installer, then the ' +
-      'server stops, installs and restarts (about a minute). The configuration is kept; camera-app is not updated.' : '')],
+      'Alpaca Server stops, installs and restarts (about a minute). The configuration is kept; camera-app is not updated.' : '')],
   ]],
 };
 
@@ -103,7 +103,7 @@ const UPDATE_STATES = {
   failed: s => `<span class="bad">${esc(s.message)}</span>`,
 };
 
-// While the installer runs, the server is gone; the next server to answer with no Update running is the
+// While the installer runs, the Alpaca Server is gone; the next one to answer with no Update running is the
 // new one: reload the page (its dashboard.html may have changed too). A failed Update reloads nothing.
 let updating = false;
 function followUpdate(st) {
@@ -158,7 +158,7 @@ async function runAction(name, confirmText, body = {}) {
   try {
     const r = await fetch('dashboard/action/' + name, {
       method: 'POST', cache: 'no-store', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({...body, confirmed: true}),   // the server refuses a confirm Action without it
+      body: JSON.stringify({...body, confirmed: true}),   // the Alpaca Server refuses a confirm Action without it
     });
     const reply = await r.json().catch(() => ({ok: false, message: 'HTTP ' + r.status}));
     ok = reply.ok;

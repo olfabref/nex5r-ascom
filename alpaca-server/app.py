@@ -56,38 +56,38 @@
 # 03-Jan-2025   rbd 1.1 Clarify devices vs device types at import site. Comment only,
 #               no logic changes.
 #
-import argparse
+import argparse                         # nex5r-ascom: --config, --no-tray
 import sys
-import threading
+import threading                        # nex5r-ascom: HTTP served beside the tray icon
 import traceback
 import inspect
-from wsgiref.simple_server import WSGIRequestHandler, WSGIServer, make_server
-from socketserver import TCPServer, ThreadingMixIn
+from wsgiref.simple_server import WSGIRequestHandler, WSGIServer, make_server   # nex5r-ascom: WSGIServer
+from socketserver import TCPServer, ThreadingMixIn                              # nex5r-ascom: threaded server
 from enum import IntEnum
 
 # -- isort wants the above line to be blank --
 # Controller classes (for routing)
-import dashboard
-import release
-import tray
-import update
+import dashboard                        # nex5r-ascom: the Dashboard
+import release                          # nex5r-ascom: New Release detection
+import tray                             # nex5r-ascom: the tray icon
+import update                           # nex5r-ascom: the Update
 import discovery
 import exceptions
 from falcon import Request, Response, App, HTTPInternalServerError
 import management
 import setup
 import log
-import config
+import config                           # nex5r-ascom: config.load() of the chosen file
 from config import Config
 from discovery import DiscoveryResponder
 from shr import set_shr_logger
-from version import __version__
+from version import __version__         # nex5r-ascom: the Version (ADR 0001)
 
 ##############################
 # FOR EACH ASCOM DEVICE TYPE #
 ##############################
-import camera
-import focuser
+import camera                           # nex5r-ascom: the Camera device
+import focuser                          # nex5r-ascom: the Focuser device
 
 #--------------
 API_VERSION = 1
@@ -261,7 +261,6 @@ def main(argv: list[str] | None = None):
     camera.start_camera_device(logger)
     focuser.start_focuser_device(logger)
     release.start(logger)                   # nex5r-ascom: latest Release at startup, then every 6 h
-    update.start(logger)                    # nex5r-ascom: the Update, started from the Dashboard
     discovery.logger = logger
     set_shr_logger(logger)
 
@@ -317,10 +316,18 @@ def main(argv: list[str] | None = None):
     with make_server(Config.ip_address, Config.port, falc_app, server_class=ThreadingWSGIServer,
                      handler_class=LoggingWSGIRequestHandler) as httpd:
         logger.info(f'==STARTUP== nex5r-ascom Alpaca Server Version {__version__}. Serving on {Config.ip_address}:{Config.port}. Time stamps are UTC.')
-        # nex5r-ascom: once the Update has launched the installer, quit as Quit in the tray does
-        # (the server shuts down, the icon goes, main returns); without a tray, serve_forever returns.
+        # nex5r-ascom: the Update, started from the Dashboard. Once it has launched the installer, it
+        # quits as Quit in the tray does (the Alpaca Server shuts down, the icon goes, main returns);
+        # without a tray, serve_forever returns. No request is served before this point.
         icon = None
-        update.updater.quit = lambda: icon.quit() if icon and icon.running else httpd.shutdown()
+
+        def quit_for_update():
+            if icon and icon.running:
+                icon.quit()
+            else:
+                httpd.shutdown()
+
+        update.start(logger, quit=quit_for_update)
         if args.no_tray:
             # Serve until process is killed
             httpd.serve_forever()

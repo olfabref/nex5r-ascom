@@ -2,9 +2,9 @@
 
 On Windows (the frozen executable), Updater.start() looks up the latest Release (release.latest_release),
 then a background thread downloads its installer and SHA256SUMS, checks the installer's SHA-256, launches
-it detached in silent mode and quits the server. The installer stops whatever is left of the server,
+it detached in silent mode and quits the Alpaca Server. The installer stops whatever is left of it,
 installs, and starts the new one; the configuration in the user folder is never touched. A wrong
-SHA-256 or a failed download cancels the Update: the server keeps running and state() says why.
+SHA-256 or a failed download cancels the Update: the Alpaca Server keeps running and state() says why.
 
 From the sources (Mac, or Windows without the installer), nothing is run: start() returns the git
 command to type. camera-app is not part of the Update.
@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Callable
 
 import release
+from exceptions import Refused
 from version import __version__
 
 INSTALLER = 'nex5r-ascom-setup.exe'     # the Release asset (alpaca-server/installer/nex5r-ascom.iss)
@@ -30,10 +31,10 @@ TIMEOUT = 30.0                          # seconds without data before a download
 SOURCES = Path(__file__).resolve().parent.parent        # the git checkout, when run from the sources
 
 # Updater states
-IDLE = 'idle'                   # no Update started since the server started
+IDLE = 'idle'                   # no Update started since the Alpaca Server started
 DOWNLOADING = 'downloading'
-INSTALLING = 'installing'       # the installer is launched: the server quits, then restarts
-FAILED = 'failed'               # cancelled: the server keeps running; `message` says why
+INSTALLING = 'installing'       # the installer is launched: the Alpaca Server quits, then restarts
+FAILED = 'failed'               # cancelled: the Alpaca Server keeps running; `message` says why
 
 
 def frozen_windows() -> bool:
@@ -45,20 +46,17 @@ def sources_command() -> str:
     return f'git -C "{SOURCES}" pull'
 
 
-class Refused(Exception):
-    """The Update cannot start now; the message says why."""
-
-
 class UpdateError(Exception):
-    """The Update was cancelled (download failed, wrong SHA-256...); the server keeps running."""
+    """The Update was cancelled (download failed, wrong SHA-256...); the Alpaca Server keeps running."""
 
 
 def launch_detached(exe: Path, args: list[str]):
-    """Starts the installer outside the server's process tree, so that it outlives the server it stops."""
+    """Starts the installer outside the Alpaca Server's process tree, so that it outlives the Alpaca
+    Server it stops."""
     flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
     kw = dict(cwd=exe.parent, close_fds=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
               stderr=subprocess.DEVNULL)
-    try:    # also out of the job of whoever started the server, when that job allows it
+    try:    # also out of the job of whoever started the Alpaca Server, when that job allows it
         subprocess.Popen([str(exe), *args], creationflags=flags | subprocess.CREATE_BREAKAWAY_FROM_JOB, **kw)
     except OSError:
         subprocess.Popen([str(exe), *args], creationflags=flags, **kw)
@@ -76,7 +74,7 @@ def parse_sums(text: str) -> dict[str, str]:
 
 def download(url: str, to: Path, timeout: float = TIMEOUT) -> str:
     """Saves url into `to`; returns its SHA-256 (hex). UpdateError when it cannot be downloaded."""
-    req = urllib.request.Request(url, headers={'User-Agent': f'nex5r-ascom/{__version__}'})
+    req = release.http_request(url)
     digest = hashlib.sha256()
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r, open(to, 'wb') as f:
@@ -93,13 +91,13 @@ class Updater:
                  installable: bool | None = None, launch: Callable[[Path, list[str]], None] = launch_detached,
                  quit: Callable[[], None] | None = None, workdir: Path | None = None,
                  logger: logging.Logger | None = None):
-        """launch(exe, args) starts the installer; quit() stops the server (app.main's clean quit);
+        """launch(exe, args) starts the installer; quit() stops the Alpaca Server (app.main's clean quit);
         workdir: where the installer is downloaded (default: a new temporary folder)."""
         self.current = current
         self.url = url
         self.installable = frozen_windows() if installable is None else installable
         self._launch = launch
-        self.quit = quit         # set by app.main once the HTTP server exists
+        self._quit = quit
         self._workdir = workdir
         self._log = logger or logging.getLogger(__name__)
         self._lock = threading.Lock()
@@ -169,15 +167,16 @@ class Updater:
             self._log.error(f'[update] cancelled: {why}')
             return
         self._log.info('==SHUTDOWN== Update: quitting for the installer')
-        if self.quit:
-            self.quit()
+        if self._quit:
+            self._quit()
 
 
 updater: Updater | None = None
 
 
 def start(log: logging.Logger | None = None, quit: Callable[[], None] | None = None) -> Updater:
-    """Creates the server's Updater (`updater`); quit stops the server once the installer is launched."""
+    """Creates the Alpaca Server's Updater (`updater`); quit() stops the Alpaca Server once the installer
+    is launched."""
     global updater
     updater = Updater(quit=quit, logger=log)
     return updater
