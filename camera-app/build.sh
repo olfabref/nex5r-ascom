@@ -4,7 +4,7 @@ set -eu
 cd "$(dirname "$0")"
 
 SDK="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
-BT="$SDK/build-tools/$(ls "$SDK/build-tools" | sort -V | tail -1)"
+BT="$SDK/build-tools/${BUILD_TOOLS_VERSION:-$(ls "$SDK/build-tools" | sort -V | tail -1)}"  # default: the newest
 DEPS=.deps
 ANDROID_JAR=$DEPS/android.jar
 FRAMEWORK_JAR=$DEPS/openmemories-framework.jar

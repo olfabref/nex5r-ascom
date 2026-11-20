@@ -1,0 +1,88 @@
+# Checks every PR before it can be squash-merged into main (GitHub flow).
+# The job names below are the required status checks of main: see .github/scripts/protect-main.sh.
+#
+# Security: CI logs are public and PRs can come from forks. This workflow runs on `pull_request`
+# (never `pull_request_target`), so fork code gets no secrets; GITHUB_TOKEN is read-only; event
+# values (PR title...) reach the shell through `env:`, never through `${{ }}` inside `run:`.
+# .github/tests/test_workflows.py enforces these rules.
+name: CI
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pytest:
+    name: pytest (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: |
+            alpaca-server/requirements*.txt
+            .github/tests/requirements.txt
+      - name: Install dependencies
+        run: python -m pip install -r alpaca-server/requirements-dev.txt -r .github/tests/requirements.txt
+      - name: Alpaca Server tests
+        working-directory: alpaca-server
+        run: python -m pytest -p no:cacheprovider
+      - name: Repository and workflow tests
+        run: python -m pytest -p no:cacheprovider .github/tests
+
+  apk:
+    name: camera-app APK
+    runs-on: ubuntu-latest
+    env:
+      BUILD_TOOLS_VERSION: 35.0.0
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+        with:
+          packages: build-tools;35.0.0
+          log-accepted-android-sdk-licenses: false
+      - name: Throwaway debug keystore
+        run: >
+          keytool -genkeypair -keystore "$RUNNER_TEMP/debug.keystore" -storepass android
+          -keypass android -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000
+          -dname "CN=Android Debug,O=Android,C=US" -noprompt
+      - name: Build
+        run: KEYSTORE="$RUNNER_TEMP/debug.keystore" camera-app/build.sh
+      - name: Check the APK
+        run: test -s camera-app/build/nex5r.apk
+
+  pr-title:
+    name: PR title
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Conventional Commits
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: python3 .github/scripts/check_pr_title.py

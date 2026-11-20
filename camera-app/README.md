@@ -6,7 +6,7 @@ No Gradle: the old Android Gradle plugin and jcenter no longer work. `build.sh` 
 
 ## Prerequisites (macOS)
 
-- JDK 11+ (`javac`) and the Android SDK build-tools (`aapt`, `d8`, `zipalign`, `apksigner`) in `~/Library/Android/sdk` or `$ANDROID_HOME`.
+- JDK 11+ (`javac`) and the Android SDK build-tools (`aapt`, `d8`, `zipalign`, `apksigner`) in `~/Library/Android/sdk` or `$ANDROID_HOME`. The newest build-tools are used unless `BUILD_TOOLS_VERSION` is set (CI pins it).
 - A debug keystore at `~/.android/debug.keystore` (password `android`), or set `KEYSTORE`.
 - Sony-PMCA-RE in `~/dev/Sony-PMCA-RE` with its `.venv` (or set `PMCA_HOME`), for installing.
 
