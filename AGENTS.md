@@ -1,8 +1,11 @@
 # nex5r-ascom
 
-Piloter un Sony NEX-5R depuis N.I.N.A. via ASCOM Alpaca. Voir `brief.md`.
+Drive a Sony NEX-5R from N.I.N.A. through ASCOM Alpaca. See `brief.md`.
 
-- `camera-app/` : l'app Android embarquée (API 10, sans Gradle). Build, installation et debug : `camera-app/README.md`.
+- `camera-app/`: the Android app on the camera (API 10, no Gradle). Build, install and debug: `camera-app/README.md`.
+- `alpaca-server/`: the Alpaca Server. Behaviour, configuration and N.I.N.A. settings: `alpaca-server/README.md`.
+
+All files in the repository (code, comments, docs, issues, commit messages) are written in English.
 
 ## Agent skills
 
